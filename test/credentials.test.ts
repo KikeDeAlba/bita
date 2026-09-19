@@ -52,6 +52,20 @@ test('never passes the token through argv when storing it', async () => {
   assert.match(seenInput, /super-secret/)
 })
 
+test('sends only the add command, since security -i has no quit', async () => {
+  let seenInput = ''
+
+  await writeKeychainToken('super-secret', options, {
+    runWithStdin: async (_args, input) => {
+      seenInput = input
+      return { code: 0, stdout: '', stderr: '' }
+    },
+  })
+
+  assert.doesNotMatch(seenInput, /quit/)
+  assert.equal(seenInput.trimEnd().split('\n').length, 1)
+})
+
 test('reports whether a delete actually removed anything', async () => {
   const removed = await deleteKeychainToken(options, {
     run: async () => ({ code: 0, stdout: '', stderr: '' }),

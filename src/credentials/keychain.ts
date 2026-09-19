@@ -106,7 +106,7 @@ export async function writeKeychainToken(
     quoteForSecurity(token),
   ].join(' ')
 
-  const result = await runWithStdin(['-i'], `${command}\nquit\n`)
+  const result = await runWithStdin(['-i'], `${command}\n`)
 
   if (result.code !== 0) {
     throw new KeychainError(
