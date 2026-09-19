@@ -9,6 +9,7 @@ import { runMap } from './commands/map.ts'
 import { runConfig } from './commands/config.ts'
 import { runRepo } from './commands/repo.ts'
 import { runNote } from './commands/note.ts'
+import { runHook } from './commands/hook.ts'
 import { runCancel, runCurrent, runStart, runStop } from './commands/timer.ts'
 import { writeOut } from './output.ts'
 
@@ -34,6 +35,7 @@ Commands:
   current                    Show the running timer, if any
   cancel                     Discard the running timer
   note get|set <entryId>     Read or attach the rich note of an entry
+  hook session-start         Emit the Claude Code SessionStart context
 
 Range presets:
   today, yesterday, week, last-week, month, last-month
@@ -122,6 +124,8 @@ export async function route(argv: string[]): Promise<number> {
       return runRepo(rest)
     case 'note':
       return runNote(rest)
+    case 'hook':
+      return runHook(rest)
     case 'start':
       return runStart(rest)
     case 'stop':
