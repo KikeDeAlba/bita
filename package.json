@@ -1,0 +1,25 @@
+{
+  "name": "toggl-track-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "toggl": "./src/bin/toggl.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "toggl": "node src/bin/toggl.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.2"
+  }
+}
