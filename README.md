@@ -18,8 +18,11 @@ for the keychain integration.
 
 ```sh
 pnpm install
-pnpm link --global
+ln -sfn "$PWD/src/bin/toggl.ts" ~/Library/pnpm/bin/toggl
 ```
+
+The symlink points at the source, so edits take effect with no reinstall.
+`pnpm link --global` no longer exists in pnpm 11.
 
 ## Authentication
 
@@ -151,3 +154,7 @@ pnpm test
 
 Rate limiting is a leaky bucket at roughly one request per second, so the client
 serialises requests 1.1s apart and backs off on 429 and 5xx.
+
+Tests inject a fake clock and a fake `fetch`, so nothing touches the network, the
+keychain or the wall clock. That is why `throttle` and `retry` take `now` and
+`sleep`: the one-second spacing and the backoff are asserted, not assumed.
