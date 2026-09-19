@@ -23,8 +23,13 @@ son las medidas.
 
 Cada registro de Toggl lleva **título, proyecto y un tag de estado**:
 
-- `pending` — todavía no está en Jira.
-- `registered` — ya está en Jira.
+- `Pending` — todavía no está en Jira.
+- `Registered` — ya está en Jira.
+
+Los tags llevan mayúscula inicial en el workspace. El filtrado no distingue
+mayúsculas, y al escribir el CLI reusa la grafía exacta que ya existe, así que
+puedes pasar `--pending` o `--add registered` sin preocuparte: no se crea un tag
+duplicado.
 
 El filtro de entrada es el **tag**, no la fecha. El rango es un acotador opcional.
 
@@ -44,6 +49,21 @@ El filtro de entrada es el **tag**, no la fecha. El rango es un acotador opciona
    `pnpm run`: su banner rompería el parseo del JSON.
 6. **No calcules fechas ni duraciones.** El CLI ya entrega `startedJira`,
    `timeSpent` y `totalHuman` listos. Cópialos literalmente.
+
+## La cuota horaria de Toggl
+
+El plan gratuito tiene un **límite horario de llamadas**, aparte del leaky bucket.
+Devuelve **402** y el CLI sale con **exit 8** diciendo cuántos minutos faltan.
+Reintentar no sirve.
+
+Es seguro por construcción: salta antes de escribir nada. Pero **comprueba que hay
+margen antes de empezar una corrida de escritura**: si la cuota se acaba entre los
+worklogs de Jira y el retaggeo, las entradas se quedan en `Pending` con sus horas
+ya en Jira, y la siguiente corrida duplicaría los worklogs. Si eso pasa a mitad de
+camino, **para el lote** y espera.
+
+Cada comando gasta llamadas, así que `/me` y el catálogo están cacheados 24h y
+`map list` funciona sin red. `--offline` trabaja solo con la caché.
 
 ## Procedimiento
 
@@ -113,7 +133,22 @@ Persiste cada respuesta en cuanto se confirme:
 
 ```
 toggl map set <togglProjectId> <JIRAKEY> --issue-type "Tarea"
+toggl map set <togglProjectId> <JIRAKEY> --parent <JIRAKEY-123> --issue-type "Tarea"
 ```
+
+**Varios proyectos de Toggl pueden compartir tablero y diferir solo en el padre.**
+Ese es el caso normal, no la excepción: el mapeo guarda `jiraProjectKey` y
+`parentKey` por separado, y el CLI valida que el padre pertenezca al tablero.
+
+**El padre no siempre es una épica.** Antes de mapearlo, léelo con `getJiraIssue`
+y mira su `issuetype.hierarchyLevel`:
+
+- Nivel 1 (**Epic**) → el hijo puede ser una `Tarea` normal con `parent`.
+- Nivel 0 (**Historia**, **Tarea**) → está al mismo nivel que una Tarea, así que el
+  hijo **tiene que ser una `Subtarea`**. Si el usuario te da una Historia como
+  destino, pregúntale si quiere subtareas colgando de ella o los worklogs
+  directamente sobre la Historia, que muchas veces es lo que quiere decir una
+  historia tipo «Sesiones de septiembre».
 
 Los proyectos ya mapeados se resuelven en silencio: **no vuelvas a preguntar por
 ellos nunca**. Si el usuario cancela a mitad del bloque, aborta la corrida entera.
@@ -164,6 +199,8 @@ En este orden, sin paralelismo:
 1. `createJiraIssue` — `summary` **literal** del grupo, sin reescribir: es la
    clave de agrupación y lo que el usuario reconocerá al buscar. La
    `description` se construye con la tabla de bloques y los ids de Toggl.
+   `issueTypeName` va por nombre (`"Tarea"`, `"Subtarea"`), no por id, y `parent`
+   lleva la clave del padre cuando el mapeo tiene `parentKey`.
 2. `editJiraIssue` con `timetracking.originalEstimate` = `totalHuman` del grupo y
    `remainingEstimate: "0m"`. **Antes del worklog**, porque algunos workflows
    bloquean la edición de campos una vez cerrado el issue, y porque el tool de
@@ -201,6 +238,7 @@ En este orden, sin paralelismo:
 | worklog **parcial** | Issue con worklogs incompletos | Retaggear **solo** las entradas que sí quedaron, anotar la key, reanudar sobre ese issue |
 | transición | Issue correcto, abierto | **Retaggear igual**: el tiempo ya está registrado, y dejarlo `pending` duplicaría worklogs |
 | `toggl tag` | Jira sí, Toggl no | **Detén la corrida entera.** Ver abajo |
+| cuota agotada (exit 8) | Depende de dónde saltó | Si fue antes de escribir, no pasa nada. Si fue en el retaggeo, es el caso de la fila anterior |
 
 **Exit 7 de `toggl tag` es "detente y avisa", nunca "reintenta el flujo".** El CLI
 imprime los ids inconsistentes y el comando exacto de reparación: muéstraselo
