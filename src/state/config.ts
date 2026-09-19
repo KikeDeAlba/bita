@@ -16,6 +16,16 @@ export interface ProjectMapping {
   verifiedAt?: string
 }
 
+export type RepoSlugSource = 'remote' | 'path' | 'basename'
+
+export interface RepoMapping {
+  togglProjectId: number
+  togglProjectName: string
+  workspaceId?: number
+  slugSource: RepoSlugSource
+  verifiedAt?: string
+}
+
 export interface JiraConfig {
   cloudId?: string
   siteUrl?: string
@@ -27,12 +37,13 @@ export interface AppConfig {
   workspaceId?: number
   timezone?: string
   jira?: JiraConfig
-  defaults?: { issueTypeName?: string }
+  defaults?: { issueTypeName?: string; pendingTagName?: string }
   projectMapping: Record<string, ProjectMapping>
+  repoMapping: Record<string, RepoMapping>
 }
 
 export function emptyConfig(): AppConfig {
-  return { version: 1, projectMapping: {} }
+  return { version: 1, projectMapping: {}, repoMapping: {} }
 }
 
 export async function readConfig(configPath = CONFIG_PATH): Promise<AppConfig> {
@@ -46,6 +57,7 @@ export async function readConfig(configPath = CONFIG_PATH): Promise<AppConfig> {
       ...(parsed.jira !== undefined ? { jira: parsed.jira } : {}),
       ...(parsed.defaults !== undefined ? { defaults: parsed.defaults } : {}),
       projectMapping: parsed.projectMapping ?? {},
+      repoMapping: parsed.repoMapping ?? {},
     }
   } catch {
     return emptyConfig()
@@ -76,6 +88,25 @@ export async function unsetProjectMapping(
   const key = String(togglProjectId)
   if (!(key in config.projectMapping)) return false
   delete config.projectMapping[key]
+  await writeConfig(config, configPath)
+  return true
+}
+
+export async function setRepoMapping(
+  slug: string,
+  mapping: RepoMapping,
+  configPath = CONFIG_PATH,
+): Promise<AppConfig> {
+  const config = await readConfig(configPath)
+  config.repoMapping[slug] = mapping
+  await writeConfig(config, configPath)
+  return config
+}
+
+export async function unsetRepoMapping(slug: string, configPath = CONFIG_PATH): Promise<boolean> {
+  const config = await readConfig(configPath)
+  if (!(slug in config.repoMapping)) return false
+  delete config.repoMapping[slug]
   await writeConfig(config, configPath)
   return true
 }
