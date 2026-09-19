@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { route } from '../cli/router.ts'
 import {
+  ConflictError,
   KeychainError,
   MissingTokenError,
   PartialWriteError,
@@ -13,6 +14,7 @@ import {
 } from '../http/errors.ts'
 import {
   EXIT_AUTH,
+  EXIT_CONFLICT,
   EXIT_GENERIC,
   EXIT_MISSING_TOKEN,
   EXIT_NETWORK,
@@ -24,6 +26,7 @@ import {
 import { errorEnvelope, writeErr, writeJson } from '../cli/output.ts'
 
 function exitCodeFor(error: unknown): number {
+  if (error instanceof ConflictError) return EXIT_CONFLICT
   if (error instanceof UsageError) return EXIT_USAGE
   if (error instanceof MissingTokenError) return EXIT_MISSING_TOKEN
   if (error instanceof TogglAuthError) return EXIT_AUTH
@@ -58,7 +61,8 @@ async function main(): Promise<void> {
     }
 
     const message = error instanceof Error ? error.message : String(error)
-    const hint = error instanceof MissingTokenError ? error.hint : undefined
+    const hint =
+      error instanceof MissingTokenError || error instanceof ConflictError ? error.hint : undefined
 
     if (wantsJson) {
       writeJson(

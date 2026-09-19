@@ -35,5 +35,5 @@ export const NOTE_BODY_MAX = 16384
 export const TITLE_SOFT_MAX = 80
 export const TITLE_HARD_MAX = 200
 
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 export const NOTE_SCHEMA_VERSION = 1

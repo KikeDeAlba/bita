@@ -6,12 +6,14 @@ import { formatDuration } from '../../domain/duration.ts'
 import { renderTable } from '../table.ts'
 import { successEnvelope, writeErr, writeJson, writeOut } from '../output.ts'
 import { MAX_TASK_SECONDS } from '../../config/constants.ts'
+import { NOTES_PATH, readNotesByEntryId } from '../../state/notes.ts'
 
 export async function runSummary(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, {
     'case-insensitive': { type: 'boolean', default: false },
     'max-task-hours': { type: 'string' },
     'estimate-step-minutes': { type: 'string' },
+    'no-notes': { type: 'boolean', default: false },
   })
   const ctx = await createContext(args)
 
@@ -33,6 +35,12 @@ export async function runSummary(argv: string[]): Promise<number> {
     ...(estimateStep !== undefined ? { estimateStepSeconds: estimateStep } : {}),
   })
 
+  const allEntryIds = groups.flatMap((group) => group.entryIds)
+  const notesById = readBoolean(args, 'no-notes')
+    ? new Map()
+    : await readNotesByEntryId(allEntryIds)
+  const missingNotes = allEntryIds.filter((id) => !notesById.has(id))
+
   const withMapping = groups.map((group) => {
     const mapping = group.projectId === null ? undefined : ctx.config.projectMapping[String(group.projectId)]
     return {
@@ -40,6 +48,13 @@ export async function runSummary(argv: string[]): Promise<number> {
       jiraProjectKey: mapping?.jiraProjectKey ?? null,
       jiraParentKey: mapping?.parentKey ?? null,
       jiraIssueTypeName: mapping?.issueTypeName ?? ctx.config.defaults?.issueTypeName ?? null,
+      notes: group.entryIds
+        .map((id) => notesById.get(id))
+        .filter((note) => note !== undefined),
+      noteCoverage: {
+        withNote: group.entryIds.filter((id) => notesById.has(id)).length,
+        withoutNote: group.entryIds.filter((id) => !notesById.has(id)).length,
+      },
     }
   })
 
@@ -83,6 +98,7 @@ export async function runSummary(argv: string[]): Promise<number> {
           excluded: result.excluded,
           alreadyRegistered: result.alreadyRegistered,
           unmappedProjects,
+          notes: { path: NOTES_PATH, matched: notesById.size, missing: missingNotes },
           warnings: result.warnings,
         },
       ),

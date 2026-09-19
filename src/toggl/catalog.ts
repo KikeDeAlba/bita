@@ -67,6 +67,18 @@ async function fetchSnapshot(
   }
 }
 
+export async function loadCachedCatalog(
+  workspaceId: number,
+  now: Date,
+): Promise<Catalog | null> {
+  const cached = await readCache<CatalogSnapshot>(
+    `catalog-${workspaceId}.json`,
+    CATALOG_CACHE_TTL_MS,
+    now.getTime(),
+  )
+  return cached ? toCatalog(cached) : null
+}
+
 export async function loadCatalog(
   client: TogglClient,
   options: LoadCatalogOptions,

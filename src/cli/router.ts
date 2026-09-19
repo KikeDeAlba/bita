@@ -7,6 +7,9 @@ import { runSummary } from './commands/summary.ts'
 import { runTag } from './commands/tag.ts'
 import { runMap } from './commands/map.ts'
 import { runConfig } from './commands/config.ts'
+import { runRepo } from './commands/repo.ts'
+import { runNote } from './commands/note.ts'
+import { runCancel, runCurrent, runStart, runStop } from './commands/timer.ts'
 import { writeOut } from './output.ts'
 
 export const VERSION = '0.1.0'
@@ -25,6 +28,12 @@ Commands:
   tag <ids...>               Add or remove tags (dry run unless --apply)
   map list|set|unset         Map Toggl projects to Jira projects and parents
   config get|set-jira        Inspect or set the local configuration
+  repo show|list|set|unset   Map a git repository to a Toggl project
+  start "<title>"            Start a running timer (tagged Pending)
+  stop                       Stop the running timer and record its note
+  current                    Show the running timer, if any
+  cancel                     Discard the running timer
+  note get|set <entryId>     Read or attach the rich note of an entry
 
 Range presets:
   today, yesterday, week, last-week, month, last-month
@@ -52,6 +61,14 @@ Summary options:
   --max-task-hours N         Cap per task before splitting (default 8)
   --estimate-step-minutes N  Round the original estimate up to this step (default 30)
   --case-insensitive         Group descriptions ignoring case and accents
+
+Timer options:
+  --project ID|NAME          Toggl project; otherwise inferred from the repo
+  --switch                   Stop whatever is running and start this one
+  --note-json FILE           Rich note as JSON (summary plus what was touched)
+  --note-file FILE           Rich note body as plain text
+  --file / --command / --resource   Artifacts touched, repeatable
+  --require-running          stop fails with exit 9 when nothing is running
 
 Tag options:
   --add NAME                 Tag to add (repeatable)
@@ -101,6 +118,20 @@ export async function route(argv: string[]): Promise<number> {
       return runMap(rest)
     case 'config':
       return runConfig(rest)
+    case 'repo':
+      return runRepo(rest)
+    case 'note':
+      return runNote(rest)
+    case 'start':
+      return runStart(rest)
+    case 'stop':
+      return runStop(rest)
+    case 'current':
+    case 'running':
+      return runCurrent(rest)
+    case 'cancel':
+    case 'discard':
+      return runCancel(rest)
     default:
       throw new UsageError(`Unknown command "${command}". Run "toggl --help" for the list.`)
   }
