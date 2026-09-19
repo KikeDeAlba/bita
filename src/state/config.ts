@@ -8,6 +8,7 @@ export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json')
 export interface ProjectMapping {
   togglProjectName: string
   jiraProjectKey: string
+  epicKey?: string
   issueTypeName?: string
   issueTypeId?: string
   doneTransition?: { id: string; name: string }

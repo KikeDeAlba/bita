@@ -6,11 +6,13 @@ import { renderTable } from '../table.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
 
 const JIRA_KEY_PATTERN = /^[A-Z][A-Z0-9]+$/
+const EPIC_KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/
 
 export async function runMap(argv: string[]): Promise<number> {
   const subcommand = argv[0] ?? 'list'
   const args = parseCommandArgs(argv.slice(1), {
     'issue-type': { type: 'string' },
+    epic: { type: 'string' },
   })
 
   if (subcommand === 'list') {
@@ -36,6 +38,7 @@ export async function runMap(argv: string[]): Promise<number> {
           { header: 'TOGGL ID' },
           { header: 'TOGGL PROJECT' },
           { header: 'JIRA' },
+          { header: 'EPIC' },
           { header: 'ISSUE TYPE' },
           { header: 'DONE TRANSITION' },
         ],
@@ -43,6 +46,7 @@ export async function runMap(argv: string[]): Promise<number> {
           String(row.togglProjectId),
           row.togglProjectName,
           row.jiraProjectKey,
+          row.epicKey ?? '',
           row.issueTypeName ?? '',
           row.doneTransition?.name ?? '',
         ]),
@@ -76,17 +80,41 @@ export async function runMap(argv: string[]): Promise<number> {
     }
 
     const issueTypeName = readString(args, 'issue-type')
+    const rawEpic = readString(args, 'epic')
+    const epicKey = rawEpic === undefined ? undefined : rawEpic.toUpperCase()
+
+    if (epicKey !== undefined) {
+      if (!EPIC_KEY_PATTERN.test(epicKey)) {
+        throw new UsageError(`Invalid epic key: "${rawEpic}". Expected something like INN-1213.`)
+      }
+      const epicProject = epicKey.slice(0, epicKey.lastIndexOf('-'))
+      if (epicProject !== jiraProjectKey) {
+        throw new UsageError(
+          `Epic ${epicKey} belongs to project ${epicProject}, not ${jiraProjectKey}. An issue cannot sit under an epic from another project.`,
+        )
+      }
+    }
+
     await setProjectMapping(togglProjectId, {
       togglProjectName: project.name,
       jiraProjectKey,
+      ...(epicKey !== undefined ? { epicKey } : {}),
       ...(issueTypeName !== undefined ? { issueTypeName } : {}),
       verifiedAt: new Date().toISOString(),
     })
 
     if (readBoolean(args, 'json')) {
-      writeJson(successEnvelope('map set', { togglProjectId, togglProjectName: project.name, jiraProjectKey }))
+      writeJson(
+        successEnvelope('map set', {
+          togglProjectId,
+          togglProjectName: project.name,
+          jiraProjectKey,
+          epicKey: epicKey ?? null,
+        }),
+      )
     } else {
-      writeOut(`Mapped "${project.name}" (${togglProjectId}) to Jira project ${jiraProjectKey}.`)
+      const under = epicKey ? ` under epic ${epicKey}` : ''
+      writeOut(`Mapped "${project.name}" (${togglProjectId}) to Jira project ${jiraProjectKey}${under}.`)
     }
     return 0
   }

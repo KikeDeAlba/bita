@@ -29,13 +29,15 @@ export async function runSummary(argv: string[]): Promise<number> {
     caseInsensitive: readBoolean(args, 'case-insensitive'),
   })
 
-  const withMapping = groups.map((group) => ({
-    ...group,
-    jiraProjectKey:
-      group.projectId === null
-        ? null
-        : (ctx.config.projectMapping[String(group.projectId)]?.jiraProjectKey ?? null),
-  }))
+  const withMapping = groups.map((group) => {
+    const mapping = group.projectId === null ? undefined : ctx.config.projectMapping[String(group.projectId)]
+    return {
+      ...group,
+      jiraProjectKey: mapping?.jiraProjectKey ?? null,
+      jiraEpicKey: mapping?.epicKey ?? null,
+      jiraIssueTypeName: mapping?.issueTypeName ?? ctx.config.defaults?.issueTypeName ?? null,
+    }
+  })
 
   const unmappedProjects = [
     ...new Map(
@@ -90,6 +92,7 @@ export async function runSummary(argv: string[]): Promise<number> {
       [
         { header: 'PROJECT' },
         { header: 'JIRA' },
+        { header: 'EPIC' },
         { header: 'SUMMARY' },
         { header: 'DAYS' },
         { header: 'LOGS', align: 'right' },
@@ -98,6 +101,7 @@ export async function runSummary(argv: string[]): Promise<number> {
       withMapping.map((group) => [
         group.projectName ?? '(no project)',
         group.jiraProjectKey ?? '?',
+        group.jiraEpicKey ?? '',
         group.summary,
         group.days.length === 1 ? (group.days[0] ?? '') : `${group.days[0]} .. ${group.days.at(-1)}`,
         String(group.worklogs.length),
