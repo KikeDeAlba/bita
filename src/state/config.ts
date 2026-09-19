@@ -1,13 +1,27 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { DEFAULT_STORY_THEMES, type StoryTheme } from '../config/constants.ts'
 import os from 'node:os'
 import path from 'node:path'
 
 export const CONFIG_DIR = path.join(os.homedir(), '.config', 'toggl-track-cli')
 export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json')
 
+export type HierarchyStrategy = 'epic-story-subtask' | 'story-subtask' | 'flat-task'
+
+export interface StoryRef {
+  key: string
+  summary: string
+  verifiedAt: string
+}
+
 export interface ProjectMapping {
   togglProjectName: string
   jiraProjectKey: string
+  hierarchy?: HierarchyStrategy
+  epicResolved?: boolean
+  stories?: Record<string, StoryRef>
+  storyIssueTypeName?: string
+  workIssueTypeName?: string
   parentKey?: string
   issueTypeName?: string
   issueTypeId?: string
@@ -37,7 +51,7 @@ export interface AppConfig {
   workspaceId?: number
   timezone?: string
   jira?: JiraConfig
-  defaults?: { issueTypeName?: string; pendingTagName?: string }
+  defaults?: { issueTypeName?: string; pendingTagName?: string; storyThemes?: StoryTheme[] }
   projectMapping: Record<string, ProjectMapping>
   repoMapping: Record<string, RepoMapping>
 }
@@ -109,4 +123,24 @@ export async function unsetRepoMapping(slug: string, configPath = CONFIG_PATH): 
   delete config.repoMapping[slug]
   await writeConfig(config, configPath)
   return true
+}
+
+export function storyThemes(config: AppConfig): StoryTheme[] {
+  const configured = config.defaults?.storyThemes
+  return configured && configured.length > 0 ? configured : [...DEFAULT_STORY_THEMES]
+}
+
+export async function setStory(
+  togglProjectId: number,
+  themeId: string,
+  story: StoryRef,
+  configPath = CONFIG_PATH,
+): Promise<AppConfig> {
+  const config = await readConfig(configPath)
+  const key = String(togglProjectId)
+  const mapping = config.projectMapping[key]
+  if (!mapping) throw new Error(`Toggl project ${togglProjectId} is not mapped to a Jira project.`)
+  mapping.stories = { ...mapping.stories, [themeId]: story }
+  await writeConfig(config, configPath)
+  return config
 }

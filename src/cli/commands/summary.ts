@@ -7,6 +7,7 @@ import { renderTable } from '../table.ts'
 import { successEnvelope, writeErr, writeJson, writeOut } from '../output.ts'
 import { MAX_TASK_SECONDS } from '../../config/constants.ts'
 import { NOTES_PATH, readNotesByEntryId } from '../../state/notes.ts'
+import { storyThemes } from '../../state/config.ts'
 
 export async function runSummary(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, {
@@ -43,10 +44,17 @@ export async function runSummary(argv: string[]): Promise<number> {
 
   const withMapping = groups.map((group) => {
     const mapping = group.projectId === null ? undefined : ctx.config.projectMapping[String(group.projectId)]
+    const hierarchy = mapping?.hierarchy ?? (mapping?.parentKey ? 'epic-story-subtask' : 'story-subtask')
     return {
       ...group,
       jiraProjectKey: mapping?.jiraProjectKey ?? null,
+      hierarchy,
+      jiraEpicKey: mapping?.parentKey ?? null,
       jiraParentKey: mapping?.parentKey ?? null,
+      epicResolved: mapping?.epicResolved ?? false,
+      jiraStories: mapping?.stories ?? {},
+      jiraStoryIssueTypeName: mapping?.storyIssueTypeName ?? 'Historia',
+      jiraWorkIssueTypeName: mapping?.workIssueTypeName ?? 'Subtarea',
       jiraIssueTypeName: mapping?.issueTypeName ?? ctx.config.defaults?.issueTypeName ?? null,
       notes: group.entryIds
         .map((id) => notesById.get(id))
@@ -89,6 +97,7 @@ export async function runSummary(argv: string[]): Promise<number> {
           range: { fromDay: result.range.fromDay, toDay: result.range.toDay, timezone: ctx.timezone },
           filters: { tags: result.filter.include, tagMode: result.filter.mode, excludeTags: result.filter.exclude },
           jira: ctx.config.jira ?? null,
+          storyThemes: storyThemes(ctx.config),
           source: result.source,
           pages: result.pages,
           truncated: result.truncated,
