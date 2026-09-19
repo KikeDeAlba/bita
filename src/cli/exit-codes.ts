@@ -6,3 +6,4 @@ export const EXIT_AUTH = 4
 export const EXIT_RATE_LIMITED = 5
 export const EXIT_NETWORK = 6
 export const EXIT_PARTIAL_WRITE = 7
+export const EXIT_QUOTA = 8

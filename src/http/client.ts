@@ -6,8 +6,10 @@ import {
   TogglNotFoundError,
   TogglRateLimitError,
   TogglServerError,
+  TogglQuotaError,
   TogglWorkspaceAccessError,
   isAuthFailureBody,
+  parseQuotaResetSeconds,
 } from './errors.ts'
 import { createThrottle, type Throttle } from './throttle.ts'
 import { parseRetryAfter, withRetry } from './retry.ts'
@@ -191,6 +193,19 @@ export class TogglClient {
         'Toggl rate limit reached. The safe rate is about 1 request per second.',
         { ...context, code: 'RATE_LIMITED' },
         retryAfterMs,
+      )
+    }
+
+    if (status === 402) {
+      const resetSeconds = parseQuotaResetSeconds(body)
+      const wait =
+        resetSeconds === undefined
+          ? 'Wait for the quota window to roll over'
+          : `Wait about ${Math.ceil(resetSeconds / 60)} minutes`
+      return new TogglQuotaError(
+        `Toggl hourly API quota exhausted on this plan. ${wait} and run the command again. Nothing was written.`,
+        { ...context, code: 'QUOTA_EXHAUSTED' },
+        resetSeconds,
       )
     }
 

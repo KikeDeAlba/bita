@@ -81,7 +81,20 @@ downstream should do date arithmetic.
 `totalSeconds` is the source of truth; the decimal hours are for reading.
 
 Exit codes: `0` ok, `1` unexpected, `2` usage, `3` no token, `4` auth rejected,
-`5` rate limited, `6` network, **`7` partial write**.
+`5` rate limited, `6` network, **`7` partial write**, **`8` hourly quota exhausted**.
+
+There are two separate Toggl limits. The leaky bucket returns `429` at roughly one
+request per second and is worth retrying, which the client does. The **hourly
+quota** on the free plan returns `402` with the reset window in the body; retrying
+cannot help, so it fails fast with the wait in minutes. Because of that quota,
+`/me` and the project catalog are cached and `--offline` runs off the cache alone
+rather than spending a call.
+
+A quota error is safe by construction: it is raised before anything is written.
+But it matters for the Jira flow — if the quota runs out **between** creating the
+worklogs in Jira and retagging in Toggl, the entries stay `pending` and a re-run
+would duplicate the worklogs. Check the quota has room before starting a write
+run.
 
 ## Writing tags
 

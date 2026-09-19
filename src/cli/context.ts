@@ -1,6 +1,6 @@
 import { TogglClient } from '../http/client.ts'
 import { resolveToken, type ResolvedToken } from '../credentials/token-provider.ts'
-import { fetchMe } from '../toggl/me.ts'
+import { resolveMe } from '../toggl/me.ts'
 import { loadCatalog, type Catalog } from '../toggl/catalog.ts'
 import { readConfig, type AppConfig } from '../state/config.ts'
 import type { WireMe } from '../toggl/wire-types.ts'
@@ -36,7 +36,10 @@ export async function createClient(args: ParsedArgs): Promise<{ client: TogglCli
 
 export async function createContext(args: ParsedArgs): Promise<AppContext> {
   const { client, token } = await createClient(args)
-  const me = await fetchMe(client)
+  const refresh = readBoolean(args, 'no-cache')
+  const offline = readBoolean(args, 'offline')
+
+  const me = await resolveMe(client, { refresh, offline, now: new Date() })
   const config = await readConfig()
 
   const workspaceId = readInteger(args, 'workspace') ?? config.workspaceId ?? me.default_workspace_id
@@ -44,7 +47,8 @@ export async function createContext(args: ParsedArgs): Promise<AppContext> {
 
   const catalog = await loadCatalog(client, {
     workspaceId,
-    refresh: readBoolean(args, 'no-cache'),
+    refresh,
+    offline,
     now: new Date(),
   })
 

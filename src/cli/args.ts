@@ -21,6 +21,7 @@ export const GLOBAL_OPTIONS: OptionConfig = {
   untagged: { type: 'boolean', default: false },
   source: { type: 'string' },
   'no-cache': { type: 'boolean', default: false },
+  offline: { type: 'boolean', default: false },
   'include-running': { type: 'boolean', default: false },
   verbose: { type: 'boolean', default: false },
   help: { type: 'boolean', default: false },

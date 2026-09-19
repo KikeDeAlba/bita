@@ -6,6 +6,7 @@ import {
   PartialWriteError,
   TogglAuthError,
   TogglNetworkError,
+  TogglQuotaError,
   TogglRateLimitError,
   TogglWorkspaceAccessError,
   UsageError,
@@ -16,6 +17,7 @@ import {
   EXIT_MISSING_TOKEN,
   EXIT_NETWORK,
   EXIT_PARTIAL_WRITE,
+  EXIT_QUOTA,
   EXIT_RATE_LIMITED,
   EXIT_USAGE,
 } from '../cli/exit-codes.ts'
@@ -26,6 +28,7 @@ function exitCodeFor(error: unknown): number {
   if (error instanceof MissingTokenError) return EXIT_MISSING_TOKEN
   if (error instanceof TogglAuthError) return EXIT_AUTH
   if (error instanceof TogglWorkspaceAccessError) return EXIT_AUTH
+  if (error instanceof TogglQuotaError) return EXIT_QUOTA
   if (error instanceof TogglRateLimitError) return EXIT_RATE_LIMITED
   if (error instanceof TogglNetworkError) return EXIT_NETWORK
   if (error instanceof PartialWriteError) return EXIT_PARTIAL_WRITE

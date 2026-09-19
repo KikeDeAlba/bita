@@ -23,7 +23,7 @@ Commands:
   entries [preset]           List time entries
   summary [preset]           Group entries into Jira-ready tasks
   tag <ids...>               Add or remove tags (dry run unless --apply)
-  map list|set|unset         Map Toggl projects to Jira projects
+  map list|set|unset         Map Toggl projects to Jira projects and epics
   config get|set-jira        Inspect or set the local configuration
 
 Range presets:
@@ -46,6 +46,7 @@ Common options:
   --source auto|me|reports   Force an endpoint
   --no-cache                 Refresh the project and tag catalog
   --verbose                  Log every HTTP request to stderr
+  --offline                  Use the cached catalog and skip the /me call
 
 Summary options:
   --max-task-hours N         Cap per task before splitting (default 8)

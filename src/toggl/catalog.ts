@@ -2,6 +2,7 @@ import type { TogglClient } from '../http/client.ts'
 import type { WireClient, WireProject, WireTag, WireWorkspace } from './wire-types.ts'
 import { readCache, writeCache } from '../state/cache.ts'
 import { CATALOG_CACHE_TTL_MS } from '../config/constants.ts'
+import { UsageError } from '../http/errors.ts'
 
 export interface Catalog {
   projects: Map<number, WireProject>
@@ -21,6 +22,7 @@ interface CatalogSnapshot {
 export interface LoadCatalogOptions {
   workspaceId: number
   refresh?: boolean
+  offline?: boolean
   now?: Date
 }
 
@@ -75,6 +77,12 @@ export async function loadCatalog(
   if (!options.refresh) {
     const cached = await readCache<CatalogSnapshot>(cacheKey, CATALOG_CACHE_TTL_MS, now)
     if (cached) return toCatalog(cached)
+  }
+
+  if (options.offline) {
+    throw new UsageError(
+      `No cached catalog for workspace ${options.workspaceId} and --offline was given. Run the command once without --offline.`,
+    )
   }
 
   const snapshot = await fetchSnapshot(client, options.workspaceId)

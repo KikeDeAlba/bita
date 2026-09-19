@@ -31,6 +31,15 @@ export class TogglBadRequestError extends TogglError {}
 export class TogglServerError extends TogglError {}
 export class TogglNetworkError extends TogglError {}
 
+export class TogglQuotaError extends TogglError {
+  readonly resetSeconds: number | undefined
+
+  constructor(message: string, context: TogglErrorContext, resetSeconds?: number) {
+    super(message, context)
+    this.resetSeconds = resetSeconds
+  }
+}
+
 export class TogglRateLimitError extends TogglError {
   readonly retryAfterMs: number | undefined
 
@@ -79,6 +88,12 @@ export class PartialWriteError extends Error {
 }
 
 const AUTH_BODY_MARKERS = ['incorrect username', 'invalid api token', 'authentication']
+
+export function parseQuotaResetSeconds(body: string | undefined): number | undefined {
+  const match = body?.match(/reset in (\d+) seconds/i)
+  if (!match?.[1]) return undefined
+  return Number(match[1])
+}
 
 export function isAuthFailureBody(body: string | undefined): boolean {
   if (!body) return true
