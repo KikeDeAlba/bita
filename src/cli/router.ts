@@ -23,7 +23,7 @@ Commands:
   entries [preset]           List time entries
   summary [preset]           Group entries into Jira-ready tasks
   tag <ids...>               Add or remove tags (dry run unless --apply)
-  map list|set|unset         Map Toggl projects to Jira projects and epics
+  map list|set|unset         Map Toggl projects to Jira projects and parents
   config get|set-jira        Inspect or set the local configuration
 
 Range presets:

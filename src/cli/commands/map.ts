@@ -6,13 +6,14 @@ import { renderTable } from '../table.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
 
 const JIRA_KEY_PATTERN = /^[A-Z][A-Z0-9]+$/
-const EPIC_KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/
+const PARENT_KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/
 
 export async function runMap(argv: string[]): Promise<number> {
   const subcommand = argv[0] ?? 'list'
   const args = parseCommandArgs(argv.slice(1), {
     'issue-type': { type: 'string' },
     epic: { type: 'string' },
+    parent: { type: 'string' },
   })
 
   if (subcommand === 'list') {
@@ -38,7 +39,7 @@ export async function runMap(argv: string[]): Promise<number> {
           { header: 'TOGGL ID' },
           { header: 'TOGGL PROJECT' },
           { header: 'JIRA' },
-          { header: 'EPIC' },
+          { header: 'PARENT' },
           { header: 'ISSUE TYPE' },
           { header: 'DONE TRANSITION' },
         ],
@@ -46,7 +47,7 @@ export async function runMap(argv: string[]): Promise<number> {
           String(row.togglProjectId),
           row.togglProjectName,
           row.jiraProjectKey,
-          row.epicKey ?? '',
+          row.parentKey ?? '',
           row.issueTypeName ?? '',
           row.doneTransition?.name ?? '',
         ]),
@@ -80,17 +81,17 @@ export async function runMap(argv: string[]): Promise<number> {
     }
 
     const issueTypeName = readString(args, 'issue-type')
-    const rawEpic = readString(args, 'epic')
-    const epicKey = rawEpic === undefined ? undefined : rawEpic.toUpperCase()
+    const rawParent = readString(args, 'parent') ?? readString(args, 'epic')
+    const parentKey = rawParent === undefined ? undefined : rawParent.toUpperCase()
 
-    if (epicKey !== undefined) {
-      if (!EPIC_KEY_PATTERN.test(epicKey)) {
-        throw new UsageError(`Invalid epic key: "${rawEpic}". Expected something like INN-1213.`)
+    if (parentKey !== undefined) {
+      if (!PARENT_KEY_PATTERN.test(parentKey)) {
+        throw new UsageError(`Invalid parent key: "${rawParent}". Expected something like INN-1213.`)
       }
-      const epicProject = epicKey.slice(0, epicKey.lastIndexOf('-'))
-      if (epicProject !== jiraProjectKey) {
+      const parentProject = parentKey.slice(0, parentKey.lastIndexOf('-'))
+      if (parentProject !== jiraProjectKey) {
         throw new UsageError(
-          `Epic ${epicKey} belongs to project ${epicProject}, not ${jiraProjectKey}. An issue cannot sit under an epic from another project.`,
+          `Parent ${parentKey} belongs to project ${parentProject}, not ${jiraProjectKey}. An issue cannot sit under a parent from another project.`,
         )
       }
     }
@@ -98,7 +99,7 @@ export async function runMap(argv: string[]): Promise<number> {
     await setProjectMapping(togglProjectId, {
       togglProjectName: project.name,
       jiraProjectKey,
-      ...(epicKey !== undefined ? { epicKey } : {}),
+      ...(parentKey !== undefined ? { parentKey } : {}),
       ...(issueTypeName !== undefined ? { issueTypeName } : {}),
       verifiedAt: new Date().toISOString(),
     })
@@ -109,11 +110,11 @@ export async function runMap(argv: string[]): Promise<number> {
           togglProjectId,
           togglProjectName: project.name,
           jiraProjectKey,
-          epicKey: epicKey ?? null,
+          parentKey: parentKey ?? null,
         }),
       )
     } else {
-      const under = epicKey ? ` under epic ${epicKey}` : ''
+      const under = parentKey ? ` under ${parentKey}` : ''
       writeOut(`Mapped "${project.name}" (${togglProjectId}) to Jira project ${jiraProjectKey}${under}.`)
     }
     return 0
