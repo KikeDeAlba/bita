@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { TogglClient } from '../src/http/client.ts'
 import { normalizeReportRows, searchReportEntries } from '../src/toggl/reports.ts'
-import { planFetchSource } from '../src/toggl/time-entries.ts'
+import { fetchEntriesByIds, fetchEntryById, planFetchSource } from '../src/toggl/time-entries.ts'
 import { emptyCatalog } from '../src/toggl/catalog.ts'
 import { createFetchMock, type FetchMock } from './helpers/fetch-mock.ts'
 import type { WireReportRow } from '../src/toggl/wire-types.ts'
@@ -152,4 +152,36 @@ test('uses the reports endpoint for a long range', () => {
   })
 
   assert.equal(source, 'reports')
+})
+
+test('reads a single entry from the me scope, not the workspace scope', async () => {
+  const mock = createFetchMock([{ match: '/time_entries/4553028267', body: { id: 4553028267 } }])
+  const client = clientFor(mock)
+
+  const entry = await fetchEntryById(client, 4553028267)
+
+  assert.equal(entry.id, 4553028267)
+  assert.equal(
+    mock.calls[0]?.url,
+    'https://api.track.toggl.com/api/v9/me/time_entries/4553028267',
+  )
+})
+
+test('the workspace scope rejects a single-entry GET, so it must not be used', async () => {
+  const mock = createFetchMock([{ match: '/time_entries/1', body: { id: 1 } }])
+  const client = clientFor(mock)
+
+  await fetchEntriesByIds(client, [1])
+
+  assert.doesNotMatch(mock.calls[0]?.url ?? '', /\/workspaces\/\d+\/time_entries\/\d+$/)
+})
+
+test('reads several entries one by one', async () => {
+  const mock = createFetchMock([{ match: '/me/time_entries/', body: { id: 7 } }])
+  const client = clientFor(mock)
+
+  const entries = await fetchEntriesByIds(client, [7, 8])
+
+  assert.equal(entries.length, 2)
+  assert.equal(mock.calls.length, 2)
 })

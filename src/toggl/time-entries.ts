@@ -104,3 +104,17 @@ export async function fetchTimeEntries(
     otherWorkspaceCount: 0,
   }
 }
+
+export async function fetchEntryById(client: TogglClient, id: number): Promise<WireTimeEntry> {
+  const response = await client.get<WireTimeEntry>(`/me/time_entries/${id}`)
+  return response.data
+}
+
+export async function fetchEntriesByIds(
+  client: TogglClient,
+  ids: number[],
+): Promise<WireTimeEntry[]> {
+  const entries: WireTimeEntry[] = []
+  for (const id of ids) entries.push(await fetchEntryById(client, id))
+  return entries
+}

@@ -2,6 +2,7 @@ import { PartialWriteError, UsageError } from '../../http/errors.ts'
 import { parseCommandArgs, readBoolean, readStringList, type ParsedArgs } from '../args.ts'
 import { createContext, type AppContext } from '../context.ts'
 import { collectEntries } from '../collect.ts'
+import { fetchEntriesByIds } from '../../toggl/time-entries.ts'
 import { canonicalizeTagNames, unknownTagNames } from '../../toggl/catalog.ts'
 import { buildTagPlan } from '../../domain/tag-plan.ts'
 import { applyTagPlan, type MutationStrategy } from '../../toggl/mutations.ts'
@@ -13,7 +14,6 @@ import { promptConfirm } from '../prompt.ts'
 import { EXIT_PARTIAL_WRITE } from '../exit-codes.ts'
 import { MIN_REQUEST_INTERVAL_MS } from '../../config/constants.ts'
 import type { EnrichedTimeEntry } from '../../domain/types.ts'
-import type { WireTimeEntry } from '../../toggl/wire-types.ts'
 
 async function selectEntries(
   ctx: AppContext,
@@ -21,13 +21,7 @@ async function selectEntries(
   ids: number[],
 ): Promise<EnrichedTimeEntry[]> {
   if (ids.length > 0) {
-    const entries: WireTimeEntry[] = []
-    for (const id of ids) {
-      const response = await ctx.client.get<WireTimeEntry>(
-        `/workspaces/${ctx.workspaceId}/time_entries/${id}`,
-      )
-      entries.push(response.data)
-    }
+    const entries = await fetchEntriesByIds(ctx.client, ids)
     return enrichEntries(entries, ctx.catalog, ctx.timezone, ctx.now)
   }
 
@@ -173,16 +167,7 @@ export async function runTag(argv: string[]): Promise<number> {
   const result = await applyTagPlan(ctx.client, plan, {
     strategy,
     verify: !readBoolean(args, 'no-verify'),
-    readEntries: async (checkIds) => {
-      const fetched: WireTimeEntry[] = []
-      for (const id of checkIds) {
-        const response = await ctx.client.get<WireTimeEntry>(
-          `/workspaces/${ctx.workspaceId}/time_entries/${id}`,
-        )
-        fetched.push(response.data)
-      }
-      return fetched
-    },
+    readEntries: (checkIds) => fetchEntriesByIds(ctx.client, checkIds),
   })
 
   await appendJournal({
