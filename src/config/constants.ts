@@ -26,5 +26,6 @@ export const PENDING_TAG = 'pending'
 export const REGISTERED_TAG = 'registered'
 
 export const MAX_TASK_SECONDS = 8 * 60 * 60
+export const ESTIMATE_STEP_SECONDS = 30 * 60
 
 export const SCHEMA_VERSION = 1

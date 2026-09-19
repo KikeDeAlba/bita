@@ -94,7 +94,10 @@ toggl summary --pending --json
 Devuelve un envelope con `data.groups`. Cada grupo es **una tarea de Jira**:
 
 - `summary` — el título tal cual lo escribió el usuario en Toggl.
-- `totalSeconds` / `totalHuman` — la estimación original de la tarea.
+- `totalSeconds` / `totalHuman` — el tiempo real medido, que es lo que suman los worklogs.
+- `estimateSeconds` / `estimateHuman` — **la estimación original**, redondeada hacia
+  arriba al siguiente medio punto. Es este el que va a `timetracking`, no el total:
+  3h 43m medidas se registran como 4h de estimación con worklogs que suman 3h 43m.
 - `worklogs[]` — **un worklog por cada bloque de tiempo**, con su `startedJira`
   y su `timeSpent` ya formateados.
 - `entryIds[]` — las entradas de Toggl que hay que retaggear al terminar.
@@ -201,7 +204,7 @@ En este orden, sin paralelismo:
    `description` se construye con la tabla de bloques y los ids de Toggl.
    `issueTypeName` va por nombre (`"Tarea"`, `"Subtarea"`), no por id, y `parent`
    lleva la clave del padre cuando el mapeo tiene `parentKey`.
-2. `editJiraIssue` con `timetracking.originalEstimate` = `totalHuman` del grupo y
+2. `editJiraIssue` con `timetracking.originalEstimate` = **`estimateHuman`** del grupo y
    `remainingEstimate: "0m"`. **Antes del worklog**, porque algunos workflows
    bloquean la edición de campos una vez cerrado el issue, y porque el tool de
    worklog no expone `adjustEstimate`: fijar el cero explícitamente es correcto

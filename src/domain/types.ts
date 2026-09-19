@@ -43,6 +43,8 @@ export interface TaskGroup {
   totalSeconds: number
   totalHuman: string
   totalHours: number
+  estimateSeconds: number
+  estimateHuman: string
   entryIds: number[]
   days: string[]
   firstStart: string

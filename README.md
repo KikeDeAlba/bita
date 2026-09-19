@@ -60,6 +60,12 @@ One Jira task per **project + title**, across the whole range. A task that spans
 several days stays one task. Inside it, **one worklog per Toggl entry**, each with
 its real start time; the group total becomes the original estimate.
 
+The **original estimate is rounded up to the next half hour** while the worklogs
+keep the exact Toggl time: 3h 43m of tracked work becomes a 4h estimate made of
+worklogs that still add up to 3h 43m. `--estimate-step-minutes N` changes the step.
+The rounding can never push a task past the cap below, because a capped task holds
+at most a whole number of steps.
+
 A task holds at most **8 hours**. Anything above that is split into
 `title (1/n)`, `title (2/n)`, packing whole entries where possible and slicing a
 single entry only when it exceeds the cap by itself. Change the cap with

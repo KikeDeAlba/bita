@@ -22,3 +22,10 @@ export function elapsedSeconds(entry: { start: string; duration: number }, now: 
   if (!Number.isFinite(started)) return 0
   return Math.max(0, Math.floor((now.getTime() - started) / 1000))
 }
+
+export function roundUpToStep(totalSeconds: number, stepSeconds: number): number {
+  if (stepSeconds <= 0) return totalSeconds
+  const minutes = Math.max(0, Math.round(totalSeconds / 60))
+  const stepMinutes = Math.round(stepSeconds / 60)
+  return Math.ceil(minutes / stepMinutes) * stepMinutes * 60
+}

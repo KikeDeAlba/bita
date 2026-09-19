@@ -1,11 +1,12 @@
 import type { EnrichedTimeEntry, TaskGroup, WorklogSlice } from './types.ts'
-import { formatDuration, toDecimalHours } from './duration.ts'
+import { formatDuration, roundUpToStep, toDecimalHours } from './duration.ts'
 import { localDay, toJiraStarted, toLocalIso } from './timezone.ts'
-import { MAX_TASK_SECONDS } from '../config/constants.ts'
+import { ESTIMATE_STEP_SECONDS, MAX_TASK_SECONDS } from '../config/constants.ts'
 
 export interface GroupOptions {
   timezone: string
   maxTaskSeconds?: number
+  estimateStepSeconds?: number
   caseInsensitive?: boolean
 }
 
@@ -85,8 +86,10 @@ function buildGroup(
   worklogs: WorklogSlice[],
   partIndex: number,
   partCount: number,
+  estimateStepSeconds: number,
 ): TaskGroup {
   const totalSeconds = worklogs.reduce((sum, slice) => sum + slice.durationSeconds, 0)
+  const estimateSeconds = roundUpToStep(totalSeconds, estimateStepSeconds)
   const entryIds = [...new Set(worklogs.map((slice) => slice.entryId))]
   const entriesInPart = base.entries.filter((entry) => entryIds.includes(entry.id))
   const days = [...new Set(worklogs.map((slice) => slice.localDay))].sort()
@@ -107,6 +110,8 @@ function buildGroup(
     totalSeconds,
     totalHuman: formatDuration(totalSeconds),
     totalHours: toDecimalHours(totalSeconds),
+    estimateSeconds,
+    estimateHuman: formatDuration(estimateSeconds),
     entryIds,
     days,
     firstStart: worklogs[0]?.startLocal ?? base.sample.startLocal,
@@ -124,6 +129,7 @@ export function groupEntries(
 ): TaskGroup[] {
   const maxSeconds = options.maxTaskSeconds ?? MAX_TASK_SECONDS
   const caseInsensitive = options.caseInsensitive ?? false
+  const estimateStep = options.estimateStepSeconds ?? ESTIMATE_STEP_SECONDS
 
   const buckets = new Map<string, EnrichedTimeEntry[]>()
 
@@ -151,6 +157,7 @@ export function groupEntries(
           worklogs,
           index + 1,
           parts.length,
+          estimateStep,
         ),
       )
     })

@@ -11,6 +11,7 @@ export async function runSummary(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, {
     'case-insensitive': { type: 'boolean', default: false },
     'max-task-hours': { type: 'string' },
+    'estimate-step-minutes': { type: 'string' },
   })
   const ctx = await createContext(args)
 
@@ -22,11 +23,14 @@ export async function runSummary(argv: string[]): Promise<number> {
 
   const maxTaskHours = readInteger(args, 'max-task-hours')
   const maxTaskSeconds = maxTaskHours === undefined ? MAX_TASK_SECONDS : maxTaskHours * 3600
+  const estimateStepMinutes = readInteger(args, 'estimate-step-minutes')
+  const estimateStep = estimateStepMinutes === undefined ? undefined : estimateStepMinutes * 60
 
   const groups = groupEntries(result.selected, {
     timezone: ctx.timezone,
     maxTaskSeconds,
     caseInsensitive: readBoolean(args, 'case-insensitive'),
+    ...(estimateStep !== undefined ? { estimateStepSeconds: estimateStep } : {}),
   })
 
   const withMapping = groups.map((group) => {
@@ -97,6 +101,7 @@ export async function runSummary(argv: string[]): Promise<number> {
         { header: 'DAYS' },
         { header: 'LOGS', align: 'right' },
         { header: 'TIME', align: 'right' },
+        { header: 'EST', align: 'right' },
       ],
       withMapping.map((group) => [
         group.projectName ?? '(no project)',
@@ -106,6 +111,7 @@ export async function runSummary(argv: string[]): Promise<number> {
         group.days.length === 1 ? (group.days[0] ?? '') : `${group.days[0]} .. ${group.days.at(-1)}`,
         String(group.worklogs.length),
         group.totalHuman,
+        group.estimateHuman,
       ]),
     ),
   )

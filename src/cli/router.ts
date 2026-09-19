@@ -50,6 +50,7 @@ Common options:
 
 Summary options:
   --max-task-hours N         Cap per task before splitting (default 8)
+  --estimate-step-minutes N  Round the original estimate up to this step (default 30)
   --case-insensitive         Group descriptions ignoring case and accents
 
 Tag options:
