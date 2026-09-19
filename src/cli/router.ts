@@ -27,7 +27,7 @@ Commands:
   entries [preset]           List time entries
   summary [preset]           Group entries into Jira-ready tasks
   tag <ids...>               Add or remove tags (dry run unless --apply)
-  map list|set|unset         Map Toggl projects to Jira projects and parents
+  map list|set|unset|story   Map Toggl projects to Jira projects, parents and stories
   config get|set-jira        Inspect or set the local configuration
   repo show|list|set|unset   Map a git repository to a Toggl project
   start "<title>"            Start a running timer (tagged Pending)

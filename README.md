@@ -38,6 +38,86 @@ toggl auth logout
 `TOGGL_API_TOKEN` takes precedence over the keychain, which keeps CI and one-off
 runs working. Get a token at https://track.toggl.com/profile.
 
+## The live timer
+
+Claude proposes starting a timer when a session is about to leave an artifact —
+a commit, a file, a deployed resource, a migration, a merge request, a root
+cause — and not when it will only produce an answer. The bridge rule is the one
+already in the user's own guide: **if the work is going to enter a worktree, the
+timer starts.**
+
+```sh
+toggl start "Ajustar el pipeline"      # 1 call, tagged Pending, project from the repo
+toggl current                          # 1 call
+toggl stop --note-json /tmp/note.json  # 1 call on the happy path
+toggl cancel --yes                     # discards a mis-started entry
+```
+
+`start` refuses when something is already running and exits 9. That is not
+politeness: a `POST` with a negative duration **silently stops** the previous
+entry, so accepting it would truncate a session with nobody noticing. Use
+`--switch` to close the previous one on purpose.
+
+The happy path of `stop` costs one call because a local mirror of the running
+entry lives in `~/.local/state/toggl-track-cli/running.json`. When the mirror is
+missing or older than twelve hours, it reconciles against the `current` endpoint
+for one extra call.
+
+### The rich note
+
+Toggl's description is the grouping key and the Jira summary, so it stays short.
+The write-up goes to an append-only sidecar,
+`~/.local/state/toggl-track-cli/entry-notes.ndjson`, and `summary --json`
+exposes it per group as `notes[]`. A line that does not parse is skipped rather
+than blinding the whole file, and the last record for an entry wins.
+
+```json
+{
+  "body": "Two to four sentences on what was done and why.",
+  "artifacts": {
+    "files": ["src/x.ts"],
+    "commands": ["terraform apply"],
+    "resources": ["https://…"]
+  }
+}
+```
+
+Losing the sidecar degrades the issue description back to the block table; it
+never affects the time itself.
+
+### Repository to project
+
+```sh
+toggl repo show                 # the slug inferred here, and its mapping
+toggl repo set . 222494997      # remember it
+```
+
+The slug comes from the git remote when there is one, normalised so that the ssh
+and https forms collapse to the same value, and from the path under `~/dev`
+otherwise. Nothing assumes a fixed directory depth.
+
+## The Jira hierarchy
+
+Levels in this tenant: `Epic` = 1, `Historia`/`Tarea`/`Error` = 0,
+`Subtarea` = −1, and a parent must sit above its child. **A Historia therefore
+cannot contain Tareas, only Subtareas**, which is why work items are subtasks:
+
+```
+Epic        the project container, already there
+  └─ Historia     the theme, inferred from a closed vocabulary, reused
+       └─ Subtarea    one Toggl group, with its worklogs
+```
+
+Time rolls up Subtarea → Historia → Epic. The Historia is a container: it is
+never estimated and **never closed**, because closing it would orphan the
+subtasks that come later.
+
+Story names come from a closed list in `defaults.storyThemes`, cached per theme
+id in the mapping so renaming the visible name breaks nothing. Matching an
+existing story uses exact normalised equality, never Jira's `~` operator, which
+tokenises and would match "Infraestructura de pruebas del cliente" for
+"Infraestructura".
+
 ## Commands
 
 ```sh
@@ -87,7 +167,9 @@ downstream should do date arithmetic.
 `totalSeconds` is the source of truth; the decimal hours are for reading.
 
 Exit codes: `0` ok, `1` unexpected, `2` usage, `3` no token, `4` auth rejected,
-`5` rate limited, `6` network, **`7` partial write**, **`8` hourly quota exhausted**.
+`5` rate limited, `6` network, **`7` partial write**, **`8` hourly quota
+exhausted**, **`9` conflict** (a timer is already running, or `stop
+--require-running` found none).
 
 There are two separate Toggl limits. The leaky bucket returns `429` at roughly one
 request per second and is worth retrying, which the client does. The **hourly

@@ -1,7 +1,7 @@
 import { UsageError } from '../../http/errors.ts'
 import { parseCommandArgs, readBoolean, readString } from '../args.ts'
 import { createContext } from '../context.ts'
-import { readConfig, setProjectMapping, unsetProjectMapping } from '../../state/config.ts'
+import { readConfig, setProjectMapping, setStory, unsetProjectMapping } from '../../state/config.ts'
 import { renderTable } from '../table.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
 
@@ -12,8 +12,11 @@ export async function runMap(argv: string[]): Promise<number> {
   const subcommand = argv[0] ?? 'list'
   const args = parseCommandArgs(argv.slice(1), {
     'issue-type': { type: 'string' },
+    summary: { type: 'string' },
     epic: { type: 'string' },
     parent: { type: 'string' },
+    'no-epic': { type: 'boolean', default: false },
+    hierarchy: { type: 'string' },
   })
 
   if (subcommand === 'list') {
@@ -96,10 +99,27 @@ export async function runMap(argv: string[]): Promise<number> {
       }
     }
 
+    const noEpic = readBoolean(args, 'no-epic')
+    const rawHierarchy = readString(args, 'hierarchy')
+    if (
+      rawHierarchy !== undefined &&
+      rawHierarchy !== 'epic-story-subtask' &&
+      rawHierarchy !== 'story-subtask' &&
+      rawHierarchy !== 'flat-task'
+    ) {
+      throw new UsageError(
+        `Invalid --hierarchy: "${rawHierarchy}". Use epic-story-subtask, story-subtask or flat-task.`,
+      )
+    }
+    const hierarchy =
+      rawHierarchy ?? (parentKey !== undefined ? 'epic-story-subtask' : noEpic ? 'story-subtask' : undefined)
+
     await setProjectMapping(togglProjectId, {
       togglProjectName: project.name,
       jiraProjectKey,
       ...(parentKey !== undefined ? { parentKey } : {}),
+      ...(hierarchy !== undefined ? { hierarchy } : {}),
+      ...(parentKey !== undefined || noEpic ? { epicResolved: true } : {}),
       ...(issueTypeName !== undefined ? { issueTypeName } : {}),
       verifiedAt: new Date().toISOString(),
     })
@@ -138,5 +158,35 @@ export async function runMap(argv: string[]): Promise<number> {
     return 0
   }
 
-  throw new UsageError(`Unknown map subcommand "${subcommand}". Use list, set or unset.`)
+  if (subcommand === 'story') {
+    const [rawProjectId, themeId, rawIssueKey] = args.positionals
+    if (!rawProjectId || !themeId || !rawIssueKey) {
+      throw new UsageError('Usage: toggl map story <togglProjectId> <themeId> <ISSUE-KEY>')
+    }
+
+    const togglProjectId = Number(rawProjectId)
+    if (!Number.isInteger(togglProjectId)) {
+      throw new UsageError(`Invalid Toggl project id: "${rawProjectId}".`)
+    }
+
+    const issueKey = rawIssueKey.toUpperCase()
+    if (!PARENT_KEY_PATTERN.test(issueKey)) {
+      throw new UsageError(`Invalid issue key: "${rawIssueKey}". Expected something like INN-1230.`)
+    }
+
+    await setStory(togglProjectId, themeId, {
+      key: issueKey,
+      summary: readString(args, 'summary') ?? themeId,
+      verifiedAt: new Date().toISOString(),
+    })
+
+    if (readBoolean(args, 'json')) {
+      writeJson(successEnvelope('map story', { togglProjectId, themeId, issueKey }))
+    } else {
+      writeOut(`Theme "${themeId}" of project ${togglProjectId} now points at ${issueKey}.`)
+    }
+    return 0
+  }
+
+  throw new UsageError(`Unknown map subcommand "${subcommand}". Use list, set, unset or story.`)
 }
