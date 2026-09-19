@@ -221,9 +221,18 @@ En este orden, sin paralelismo:
 
 1. Filtra las transiciones cuyo `to.statusCategory.key === "done"`.
 2. Si queda **una**, úsala.
-3. Si quedan **varias** (típico: "Listo", "No se hará", "Duplicado"), prefiere por
-   nombre en este orden: Listo, Hecho, Finalizada, Finalizado, Completada,
-   Terminado, Cerrado, Done. Propónla en la confirmación la primera vez.
+3. Si quedan **varias**, elige por el **nombre del estado destino (`to.name`)**,
+   nunca por el nombre de la transición. No son lo mismo y confundirlos cancela
+   trabajo: en **VBGLOBAL la transición se llama «Listo» pero su `to.name` es
+   «Cancelado»**, y la de cierre real es «Closed» → «Cerrada».
+
+   - Orden de preferencia sobre `to.name`: Finalizada, Finalizado, Cerrada,
+     Cerrado, Hecho, Completada, Terminado, Done.
+   - **Descarta siempre** los `to.name` que suenen a abandono o a paso
+     intermedio: Cancelado, Cancelada, Duplicado, No se hará, Rechazado,
+     READY TO TEST, Ready to test.
+   - Si tras eso sigue habiendo varias, **pregunta**. Propónla en la
+     confirmación la primera vez y guárdala en el mapeo.
 4. Si **ninguna** está en categoría `done`, da **un solo salto** hacia una
    `indeterminate` y vuelve a consultar. Máximo dos saltos. Nunca iteres
    transiciones a ver cuál pega: cada intento dispara notificaciones y

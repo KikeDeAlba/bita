@@ -1,12 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { errorEnvelope, successEnvelope } from '../src/cli/output.ts'
+import { SCHEMA_VERSION } from '../src/config/constants.ts'
 import { renderTable } from '../src/cli/table.ts'
 
 test('a success envelope is versioned and self describing', () => {
   const envelope = successEnvelope('summary', { groups: [] }, { entryCount: 0 })
 
-  assert.equal(envelope.schemaVersion, 1)
+  assert.equal(envelope.schemaVersion, SCHEMA_VERSION)
   assert.equal(envelope.ok, true)
   assert.equal(envelope.command, 'summary')
   assert.deepEqual(envelope.data, { groups: [] })

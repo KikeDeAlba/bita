@@ -2,7 +2,7 @@ import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { UsageError } from '../http/errors.ts'
-import { NOTE_BODY_MAX, SCHEMA_VERSION } from '../config/constants.ts'
+import { NOTE_BODY_MAX, NOTE_SCHEMA_VERSION } from '../config/constants.ts'
 
 export const NOTES_DIR = path.join(os.homedir(), '.local', 'state', 'toggl-track-cli')
 export const NOTES_PATH = path.join(NOTES_DIR, 'entry-notes.ndjson')
@@ -83,7 +83,7 @@ export function parseNoteInput(raw: unknown, defaults: NoteDefaults): EntryNote 
   const repo = (input['repo'] as EntryNote['repo']) ?? defaults.repo
 
   return {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: NOTE_SCHEMA_VERSION,
     entryId: defaults.entryId,
     workspaceId: defaults.workspaceId,
     recordedAt: defaults.recordedAt,
