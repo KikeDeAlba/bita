@@ -6,13 +6,23 @@ import { PENDING_TAG, REGISTERED_TAG } from '../config/constants.ts'
 
 type OptionConfig = NonNullable<ParseArgsConfig['options']>
 
-export const GLOBAL_OPTIONS: OptionConfig = {
+export const BASE_OPTIONS: OptionConfig = {
   json: { type: 'boolean', default: false },
+  workspace: { type: 'string' },
+  timezone: { type: 'string' },
+  'no-cache': { type: 'boolean', default: false },
+  offline: { type: 'boolean', default: false },
+  verbose: { type: 'boolean', default: false },
+  help: { type: 'boolean', default: false },
+}
+
+export const RANGE_OPTIONS: OptionConfig = {
   from: { type: 'string' },
   to: { type: 'string' },
   'last-days': { type: 'string' },
-  workspace: { type: 'string' },
-  timezone: { type: 'string' },
+}
+
+export const FILTER_OPTIONS: OptionConfig = {
   tag: { type: 'string', multiple: true },
   'exclude-tag': { type: 'string', multiple: true },
   'tag-match': { type: 'string' },
@@ -20,11 +30,13 @@ export const GLOBAL_OPTIONS: OptionConfig = {
   registered: { type: 'boolean', default: false },
   untagged: { type: 'boolean', default: false },
   source: { type: 'string' },
-  'no-cache': { type: 'boolean', default: false },
-  offline: { type: 'boolean', default: false },
   'include-running': { type: 'boolean', default: false },
-  verbose: { type: 'boolean', default: false },
-  help: { type: 'boolean', default: false },
+}
+
+export const GLOBAL_OPTIONS: OptionConfig = {
+  ...BASE_OPTIONS,
+  ...RANGE_OPTIONS,
+  ...FILTER_OPTIONS,
 }
 
 export interface ParsedArgs {
@@ -32,11 +44,15 @@ export interface ParsedArgs {
   positionals: string[]
 }
 
-export function parseCommandArgs(argv: string[], options: OptionConfig): ParsedArgs {
+export function parseCommandArgs(
+  argv: string[],
+  options: OptionConfig,
+  globals: OptionConfig = GLOBAL_OPTIONS,
+): ParsedArgs {
   try {
     const parsed = parseArgs({
       args: argv,
-      options: { ...GLOBAL_OPTIONS, ...options },
+      options: { ...globals, ...options },
       allowPositionals: true,
       strict: true,
     })
