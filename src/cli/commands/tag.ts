@@ -1,8 +1,8 @@
 import { PartialWriteError, UsageError } from '../../http/errors.ts'
-import { parseCommandArgs, readBoolean, readStringList, type ParsedArgs } from '../args.ts'
+import { parseCommandArgs, readBoolean, readString, readStringList, type ParsedArgs } from '../args.ts'
 import { createContext, type AppContext } from '../context.ts'
 import { collectEntries } from '../collect.ts'
-import { fetchEntriesByIds } from '../../toggl/time-entries.ts'
+import { fetchEntriesByIds, fetchEntriesCoveringIds } from '../../toggl/time-entries.ts'
 import { canonicalizeTagNames, unknownTagNames } from '../../toggl/catalog.ts'
 import { buildTagPlan } from '../../domain/tag-plan.ts'
 import { applyTagPlan, type MutationStrategy } from '../../toggl/mutations.ts'
@@ -21,6 +21,29 @@ async function selectEntries(
   ids: number[],
 ): Promise<EnrichedTimeEntry[]> {
   if (ids.length > 0) {
+    const from = readString(args, 'from')
+    const to = readString(args, 'to')
+
+    if (from && to) {
+      const entries = await fetchEntriesCoveringIds(ctx.client, {
+        ids,
+        workspaceId: ctx.workspaceId,
+        userId: ctx.me.id,
+        catalog: ctx.catalog,
+        fromDay: from,
+        toDay: to,
+        timezone: ctx.timezone,
+      })
+      const found = new Set(entries.map((entry) => entry.id))
+      const missing = ids.filter((id) => !found.has(id))
+      if (missing.length > 0) {
+        throw new UsageError(
+          `These ids are not in the range ${from}..${to}: ${missing.join(', ')}. Widen --from/--to or drop them to read each id one by one.`,
+        )
+      }
+      return enrichEntries(entries, ctx.catalog, ctx.timezone, ctx.now)
+    }
+
     const entries = await fetchEntriesByIds(ctx.client, ids)
     return enrichEntries(entries, ctx.catalog, ctx.timezone, ctx.now)
   }
@@ -167,7 +190,21 @@ export async function runTag(argv: string[]): Promise<number> {
   const result = await applyTagPlan(ctx.client, plan, {
     strategy,
     verify: !readBoolean(args, 'no-verify'),
-    readEntries: (checkIds) => fetchEntriesByIds(ctx.client, checkIds),
+    readEntries: (checkIds) => {
+      const days = entries.filter((entry) => checkIds.includes(entry.id)).map((entry) => entry.localDay).sort()
+      const fromDay = days[0]
+      const toDay = days.at(-1)
+      if (!fromDay || !toDay) return Promise.resolve([])
+      return fetchEntriesCoveringIds(ctx.client, {
+        ids: checkIds,
+        workspaceId: ctx.workspaceId,
+        userId: ctx.me.id,
+        catalog: ctx.catalog,
+        fromDay,
+        toDay,
+        timezone: ctx.timezone,
+      })
+    },
   })
 
   await appendJournal({

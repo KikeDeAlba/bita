@@ -4,6 +4,7 @@ import type { WireTimeEntry } from './wire-types.ts'
 import type { ResolvedRange } from '../domain/date-range.ts'
 import { normalizeReportRows, searchReportEntries } from './reports.ts'
 import { DIRECT_FETCH_MAX_SPAN_DAYS, ME_ENTRIES_HARD_LIMIT } from '../config/constants.ts'
+import { addDays } from '../domain/timezone.ts'
 
 export type FetchSource = 'me' | 'reports'
 export type FetchMode = 'auto' | 'me' | 'reports'
@@ -117,4 +118,39 @@ export async function fetchEntriesByIds(
   const entries: WireTimeEntry[] = []
   for (const id of ids) entries.push(await fetchEntryById(client, id))
   return entries
+}
+
+export async function fetchEntriesCoveringIds(
+  client: TogglClient,
+  options: {
+    ids: number[]
+    workspaceId: number
+    userId: number
+    catalog: Catalog
+    fromDay: string
+    toDay: string
+    timezone: string
+  },
+): Promise<WireTimeEntry[]> {
+  const range: ResolvedRange = {
+    fromDay: options.fromDay,
+    toDay: options.toDay,
+    queryStartDate: addDays(options.fromDay, -1),
+    queryEndDate: addDays(options.toDay, 2),
+    timezone: options.timezone,
+    preset: 'custom',
+    spanDays: 0,
+  }
+
+  const wanted = new Set(options.ids)
+  const result = await fetchTimeEntries(client, {
+    range,
+    workspaceId: options.workspaceId,
+    userId: options.userId,
+    catalog: options.catalog,
+    hasExplicitRange: true,
+    mode: 'reports',
+  })
+
+  return result.entries.filter((entry) => wanted.has(entry.id))
 }
