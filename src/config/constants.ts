@@ -28,4 +28,11 @@ export const REGISTERED_TAG = 'registered'
 export const MAX_TASK_SECONDS = 8 * 60 * 60
 export const ESTIMATE_STEP_SECONDS = 30 * 60
 
-export const SCHEMA_VERSION = 1
+export const CREATED_WITH = 'toggl-track-cli/0.1.0'
+export const PENDING_TAG_FALLBACK = 'Pending'
+export const MIRROR_STALE_MS = 12 * 60 * 60 * 1000
+export const NOTE_BODY_MAX = 16384
+export const TITLE_SOFT_MAX = 80
+export const TITLE_HARD_MAX = 200
+
+export const SCHEMA_VERSION = 2
