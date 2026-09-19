@@ -2,6 +2,7 @@ import { PartialWriteError, UsageError } from '../../http/errors.ts'
 import { parseCommandArgs, readBoolean, readStringList, type ParsedArgs } from '../args.ts'
 import { createContext, type AppContext } from '../context.ts'
 import { collectEntries } from '../collect.ts'
+import { canonicalizeTagNames, unknownTagNames } from '../../toggl/catalog.ts'
 import { buildTagPlan } from '../../domain/tag-plan.ts'
 import { applyTagPlan, type MutationStrategy } from '../../toggl/mutations.ts'
 import { appendJournal } from '../../state/journal.ts'
@@ -89,14 +90,17 @@ export async function runTag(argv: string[]): Promise<number> {
     )
   }
 
-  const unknownTags = [...add, ...remove].filter((tag) => !ctx.catalog.tagsByName.has(tag.toLowerCase()))
-  if (unknownTags.length > 0 && add.some((tag) => unknownTags.includes(tag))) {
+  const canonicalAdd = canonicalizeTagNames(ctx.catalog, add)
+  const canonicalRemove = canonicalizeTagNames(ctx.catalog, remove)
+
+  const createdByThisRun = unknownTagNames(ctx.catalog, add)
+  if (createdByThisRun.length > 0) {
     writeErr(
-      `Warning: tag(s) not present in this workspace and they will be created: ${unknownTags.join(', ')}.`,
+      `Warning: these tags do not exist in this workspace and Toggl will create them: ${createdByThisRun.join(', ')}.`,
     )
   }
 
-  const plan = buildTagPlan(entries, { add, remove }, ctx.workspaceId)
+  const plan = buildTagPlan(entries, { add: canonicalAdd, remove: canonicalRemove }, ctx.workspaceId)
   const estimatedSeconds = Math.ceil((plan.requestCount * MIN_REQUEST_INTERVAL_MS) / 1000)
 
   const planPayload = {

@@ -99,3 +99,11 @@ export function resolveTagIds(catalog: Catalog, names: string[]): ResolvedTags {
 
   return { ids, unknown }
 }
+
+export function canonicalizeTagNames(catalog: Catalog, names: string[]): string[] {
+  return names.map((name) => catalog.tagsByName.get(name.toLowerCase())?.name ?? name)
+}
+
+export function unknownTagNames(catalog: Catalog, names: string[]): string[] {
+  return names.filter((name) => !catalog.tagsByName.has(name.toLowerCase()))
+}

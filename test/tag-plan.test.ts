@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildTagPlan, desiredTagsFor } from '../src/domain/tag-plan.ts'
 import { makeEntry } from './helpers/entries.ts'
+import { canonicalizeTagNames, emptyCatalog, unknownTagNames } from '../src/toggl/catalog.ts'
 
 const change = { add: ['registered'], remove: ['pending'] }
 
@@ -60,4 +61,42 @@ test('matches tag names regardless of case', () => {
   const plan = buildTagPlan([makeEntry({ id: 1, tags: ['Pending'] })], change, 456)
 
   assert.deepEqual(plan.batches[0]?.desiredTags, ['registered'])
+})
+
+test('reuses the exact casing the workspace already has for a tag', () => {
+  const catalog = emptyCatalog()
+  for (const tag of [
+    { id: 1, workspace_id: 456, name: 'Pending' },
+    { id: 2, workspace_id: 456, name: 'Registered' },
+  ]) {
+    catalog.tagsById.set(tag.id, tag)
+    catalog.tagsByName.set(tag.name.toLowerCase(), tag)
+  }
+
+  assert.deepEqual(canonicalizeTagNames(catalog, ['registered']), ['Registered'])
+  assert.deepEqual(canonicalizeTagNames(catalog, ['pending']), ['Pending'])
+})
+
+test('leaves a genuinely new tag name untouched and reports it', () => {
+  const catalog = emptyCatalog()
+
+  assert.deepEqual(canonicalizeTagNames(catalog, ['brand-new']), ['brand-new'])
+  assert.deepEqual(unknownTagNames(catalog, ['brand-new']), ['brand-new'])
+})
+
+test('does not invent a lowercase duplicate of an existing tag', () => {
+  const catalog = emptyCatalog()
+  const tag = { id: 2, workspace_id: 456, name: 'Registered' }
+  catalog.tagsById.set(tag.id, tag)
+  catalog.tagsByName.set('registered', tag)
+
+  const canonical = canonicalizeTagNames(catalog, ['registered'])
+  const plan = buildTagPlan(
+    [makeEntry({ id: 1, tags: ['Pending'] })],
+    { add: canonical, remove: canonicalizeTagNames(catalog, ['pending']) },
+    456,
+  )
+
+  assert.deepEqual(plan.batches[0]?.desiredTags, ['Registered'])
+  assert.deepEqual(unknownTagNames(catalog, canonical), [])
 })
