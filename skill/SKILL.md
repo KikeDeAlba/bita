@@ -102,6 +102,76 @@ nada, así que consulta las veces que haga falta.
    sin `parent`: una subtarea huérfana es inenrutable.
 9. **No calcules fechas ni duraciones.** El CLI ya entrega `startedJira`,
    `timeSpent` y `totalHuman` listos. Cópialos literalmente.
+10. **Nada de lo que se publica delata la conversación.** Los documentos y las
+    descripciones de Jira se escriben como documentación técnica, no como el
+    acta de un chat. Ver "Cómo se escribe lo que se publica".
+
+## Cómo se escribe lo que se publica
+
+El documento de la entrada y la descripción del issue los va a leer gente que no
+estuvo aquí, meses después, buscando por qué algo está como está. Tienen que
+leerse como la bitácora técnica de quien hizo el trabajo. **Nada en el texto
+puede delatar que hubo una conversación, ni quién pidió qué, ni que lo escribió
+un asistente.**
+
+### Lista negra
+
+Si una de estas aparece en el texto, la frase está mal y hay que reescribirla
+entera, no suavizarla:
+
+- **Quién lo pidió**: "por decisión del usuario", "se acordó con el usuario", "a
+  petición del usuario", "según lo solicitado", "el usuario pidió / indicó /
+  confirmó / prefirió", "como se solicitó".
+- **La conversación**: "en esta sesión", "durante la conversación", "en el
+  chat", "como se comentó", "se revisó junto con", "se validó con".
+- **Primera persona de charla**: "decidimos", "acordamos", "vimos que", "nos
+  dimos cuenta", "optamos por", "revisamos".
+- **Relleno burocrático**: "se procedió a", "se llevó a cabo la tarea de", "se
+  realizó la implementación de", "cabe destacar", "es importante señalar", "como
+  se mencionó anteriormente".
+- **Hedging**: "creo que", "parece que", "aparentemente", "podría ser que", "en
+  principio", "al parecer", "se asume que".
+- **El asistente**: "asistente", "Claude", "IA", "generado automáticamente",
+  "agente", y cualquier nombre de herramienta del agente.
+- **Narración del tanteo**: "se intentó varias veces", "después de varios
+  intentos", "tras probar distintas opciones".
+
+### Así no / así sí
+
+| Así no | Así sí |
+|---|---|
+| Por decisión del usuario se fijó el tope en 8 horas. | El tope por tarea es de 8 horas: Jira rechaza worklogs mayores en una sola entrada. |
+| Se acordó usar colas en lugar de procesar en línea. | El procesamiento pasa a una cola: en línea, un pico de reservas bloqueaba las respuestas de la API. |
+| Según lo solicitado, se agregó validación al endpoint. | El endpoint valida el id del apartado antes de encolar; sin validación, un id vacío llegaba hasta el consumidor. |
+| Se procedió a la migración de la tabla de pagos. | La tabla de pagos se migró a `payments_v2`. |
+| Creo que el problema era el token expirado. | El SDK devuelve 200 con cuerpo vacío cuando el token expiró; ese era el fallo. |
+| Después de varios intentos logramos que pasaran las pruebas. | `pnpm test`: 148 pasan, 0 fallan. |
+| El usuario prefirió no tocar el front en esta iteración. | El front queda fuera de alcance; sigue esperando 201 y funciona con 202. Anotado en Pendiente. |
+| Se analizó el código y se detectaron varios problemas. | `QUEUE_URL` del entorno de dev apunta a la cola de staging desde marzo. |
+
+### Cómo se escribe entonces
+
+- Voz impersonal en pasado ("se migró", "se añadió") o sujeto técnico ("el
+  worker reintenta cinco veces"). Nunca "yo" ni "nosotros".
+- **Una afirmación es un hecho comprobable.** Si no se comprobó, no se atenúa:
+  se va a "Pendiente".
+- **Las decisiones se justifican por su razón técnica, no por su origen.** Si la
+  razón real es una preferencia de negocio, se escribe como restricción ("el
+  reporte exige bloques de 8 h"), no como autoría.
+- El resultado, no el camino. Excepción: "Hallazgos", donde el camino es el
+  valor, pero escrito como hecho, no como anécdota.
+
+### La prueba de olfato
+
+Antes de guardar el documento y otra vez antes de crear el issue, lee cada
+párrafo y pregunta:
+
+1. **¿Esto lo escribiría alguien en su bitácora técnica, sin haber estado en la
+   conversación?** Si suena a acta de reunión, fuera.
+2. **Si borro la primera mitad de la frase, ¿se pierde información técnica?** Si
+   no se pierde nada, esa mitad era relleno o era la conversación.
+3. **¿Queda alguna palabra de la lista negra?** Si sí, reescribe la frase
+   completa: cambiarle el sujeto no la arregla.
 
 ## La ventana que sigue existiendo
 
