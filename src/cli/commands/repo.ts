@@ -1,8 +1,10 @@
 import os from 'node:os'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { UsageError } from '../../errors.ts'
-import { parseCommandArgs, readBoolean, BASE_OPTIONS } from '../args.ts'
+import { parseCommandArgs, readBoolean, readString, BASE_OPTIONS } from '../args.ts'
 import { createLocalContext } from '../local-context.ts'
-import { findProjectById } from '../../db/projects.ts'
+import { findProjectById, findProjectByName, insertProject } from '../../db/projects.ts'
 import { readRepoContext } from '../../state/git.ts'
 import { resolveRepoIdentity, type RepoIdentity } from '../../domain/repo.ts'
 import { readConfig, setRepoMapping, unsetRepoMapping } from '../../state/config.ts'
@@ -23,7 +25,11 @@ export async function currentRepoIdentity(cwd = process.cwd()): Promise<RepoIden
 
 export async function runRepo(argv: string[]): Promise<number> {
   const subcommand = argv[0] ?? 'show'
-  const args = parseCommandArgs(argv.slice(1), {}, BASE_OPTIONS)
+  const args = parseCommandArgs(
+    argv.slice(1),
+    { name: { type: 'string' }, client: { type: 'string' } },
+    BASE_OPTIONS,
+  )
   const json = readBoolean(args, 'json')
 
   if (subcommand === 'show') {
@@ -46,7 +52,7 @@ export async function runRepo(argv: string[]): Promise<number> {
     writeOut(
       mapping
         ? `Project : ${mapping.projectName} (${mapping.projectId})`
-        : `Project : not mapped. Run "bita repo set . <projectId>".`,
+        : `Project : not mapped. Run "bita repo init" to create one and map it.`,
     )
     return 0
   }
@@ -60,16 +66,100 @@ export async function runRepo(argv: string[]): Promise<number> {
       return 0
     }
     if (rows.length === 0) {
-      writeOut('No repository is mapped to a Toggl project yet.')
+      writeOut('No repository is mapped to a project yet.')
       return 0
     }
 
     writeOut(
       renderTable(
-        [{ header: 'REPOSITORY' }, { header: 'TOGGL PROJECT' }, { header: 'ID' }, { header: 'FROM' }],
+        [{ header: 'REPOSITORY' }, { header: 'PROJECT' }, { header: 'ID' }, { header: 'FROM' }],
         rows.map((row) => [row.slug, row.projectName, String(row.projectId), row.slugSource]),
       ),
     )
+    return 0
+  }
+
+  if (subcommand === 'init') {
+    const [rawPath] = args.positionals
+    const target = rawPath === undefined || rawPath === '.' ? process.cwd() : resolve(rawPath)
+
+    if (!existsSync(target)) {
+      throw new UsageError(`No such directory: ${target}`)
+    }
+
+    const identity = await currentRepoIdentity(target)
+    if (!identity) {
+      throw new UsageError(`${target} is not inside a git repository.`)
+    }
+
+    const config = await readConfig()
+    const existingMapping = config.repoMapping[identity.slug]
+    if (existingMapping) {
+      if (json) {
+        writeJson(
+          successEnvelope('repo init', {
+            slug: identity.slug,
+            projectId: existingMapping.projectId,
+            projectName: existingMapping.projectName,
+            created: false,
+          }),
+        )
+      } else {
+        writeOut(
+          `${identity.slug} is already mapped to ${existingMapping.projectName} (${existingMapping.projectId}).`,
+        )
+        writeOut(`Run "bita repo unset ${identity.slug}" first if you want to change it.`)
+      }
+      return 0
+    }
+
+    const projectName = readString(args, 'name') ?? identity.name
+    const ctx = createLocalContext(args)
+    let project
+    let created = false
+    try {
+      const found = findProjectByName(ctx.db, projectName)
+      if (found) {
+        project = found
+      } else {
+        project = insertProject(ctx.db, {
+          name: projectName,
+          clientName: readString(args, 'client') ?? null,
+          createdAt: new Date().toISOString(),
+        })
+        created = true
+      }
+    } finally {
+      ctx.db.close()
+    }
+
+    await setRepoMapping(identity.slug, {
+      projectId: project.id,
+      projectName: project.name,
+      slugSource: identity.source,
+      verifiedAt: new Date().toISOString(),
+    })
+
+    if (json) {
+      writeJson(
+        successEnvelope('repo init', {
+          slug: identity.slug,
+          projectId: project.id,
+          projectName: project.name,
+          created,
+        }),
+      )
+    } else {
+      writeOut(
+        created
+          ? `Created project ${project.id}: ${project.name}`
+          : `Reused the existing project ${project.id}: ${project.name}`,
+      )
+      writeOut(`Mapped ${identity.slug} (from ${identity.source}) to it.`)
+      writeOut('')
+      writeOut('Claude will now offer the timer in this repository.')
+      writeOut(`To send its time to a Jira board: bita map set ${project.id} <JIRAKEY>`)
+    }
     return 0
   }
 
@@ -81,7 +171,7 @@ export async function runRepo(argv: string[]): Promise<number> {
 
     const projectId = Number(rawProjectId)
     if (!Number.isInteger(projectId)) {
-      throw new UsageError(`Invalid Toggl project id: "${rawProjectId}".`)
+      throw new UsageError(`Invalid project id: "${rawProjectId}".`)
     }
 
     const identity = rawSlug === '.' ? await currentRepoIdentity() : null
@@ -125,5 +215,5 @@ export async function runRepo(argv: string[]): Promise<number> {
     return 0
   }
 
-  throw new UsageError(`Unknown repo subcommand "${subcommand}". Use show, list, set or unset.`)
+  throw new UsageError(`Unknown repo subcommand "${subcommand}". Use init, show, list, set or unset.`)
 }

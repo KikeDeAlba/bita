@@ -87,13 +87,25 @@ bita projects
 La base se crea sola en `~/.local/share/bita/bita.db` al primer uso. `BITA_DB_PATH`
 la mueve a otro sitio, que es también la forma de probar cosas sin tocar la real.
 
-### 4. Crear un proyecto y mapear el repositorio
+### 4. Dar de alta un repositorio
 
-Esto es lo que enciende la integración con Claude:
+Esto es lo que enciende la integración con Claude. Un solo comando crea el
+proyecto y lo mapea:
+
+```sh
+bita repo init                     # el repositorio actual
+bita repo init ~/dev/otro/repo     # o el que le pases
+```
+
+El nombre del proyecto sale de la carpeta; `--name "Otro nombre"` lo cambia. Si
+ya existe un proyecto con ese nombre **lo reutiliza**, que es lo que quieres
+cuando el front y el back de lo mismo deben compartir proyecto.
+
+Si prefieres separarlo en dos pasos, o mapear varios repositorios a un proyecto
+que ya existe:
 
 ```sh
 bita project add "Mi proyecto"     # devuelve un id
-cd ~/ruta/al/repositorio
 bita repo set . <projectId>
 ```
 
@@ -127,6 +139,7 @@ bita stop 12 --note-json /tmp/nota.json      # para uno y le adjunta la nota
 bita log "Sesión con QA" --from 14:00 --for 1h
 bita summary --pending --json                # agrupado y listo para Jira
 bita link 12 13 --issue DD-1896              # marca como registradas
+bita repo init ~/dev/otro/repo               # da de alta otro repositorio
 ```
 
 `bita --help` lista todo.
@@ -164,7 +177,7 @@ No lo impide. Solo evita que pase inadvertido.
 
 ## Los comandos de Claude Code
 
-`commands/` tiene cuatro slash commands, enlazados por symlink desde
+`commands/` tiene cinco slash commands, enlazados por symlink desde
 `~/.claude/commands/`:
 
 | Comando | Qué hace |
@@ -173,6 +186,7 @@ No lo impide. Solo evita que pase inadvertido.
 | `/bita-stop [id]` | Escribe la nota de lo que se hizo y para. Con varios abiertos, pregunta cuál |
 | `/bita-timers` | Qué está corriendo y cuánto llevas hoy |
 | `/bita-log <texto>` | Registra un bloque que ya pasó, cuando se trabajó sin cronómetro |
+| `/bita-init [ruta]` | Da de alta un repositorio: crea su proyecto, lo mapea y revisa el tablero |
 
 Viven en el repo por la misma razón que la skill: usan los flags del CLI, así que
 cambian en el mismo commit.
@@ -202,6 +216,8 @@ src/domain/    lógica pura: agrupación, duraciones, zonas horarias, solapes
 src/cli/       comandos y formato de salida
 src/state/     configuración y notas en disco
 skill/         la skill de Claude Code
+commands/      los slash commands
+scripts/       el instalador
 ```
 
 El punto de corte es `EnrichedTimeEntry` (`src/domain/types.ts`): todo lo que

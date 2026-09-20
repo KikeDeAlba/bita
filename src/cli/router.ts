@@ -35,7 +35,8 @@ Reporting:
 
 Configuration:
   map list|set|unset|story   Map projects to Jira projects, parents and stories
-  repo show|list|set|unset   Map a git repository to a project
+  repo init [path]           Create a project for a repository and map it
+  repo show|list|set|unset   Inspect or change the mapping by hand
   config get|set-jira        Inspect or set the local configuration
   hook session-start         Emit the Claude Code SessionStart context
 
@@ -72,6 +73,7 @@ Log options:
   --for 1h30m                How long it lasted, instead of --to
 
 Project options:
+  --name NAME                With "repo init", the project name (default: the repo folder)
   --client NAME              Client the project belongs to
   --activate                 With "project archive", bring it back instead
   --all                      With "projects", include archived ones
