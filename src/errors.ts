@@ -30,6 +30,18 @@ export class ConflictError extends Error {
   }
 }
 
+export class NotFoundError extends Error {
+  readonly code: string
+  readonly hint: string | undefined
+
+  constructor(message: string, code: string, hint?: string) {
+    super(message)
+    this.name = 'NotFoundError'
+    this.code = code
+    this.hint = hint
+  }
+}
+
 export class UsageError extends Error {
   readonly code = 'USAGE_ERROR'
 
