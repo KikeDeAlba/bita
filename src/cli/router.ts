@@ -9,6 +9,7 @@ import { runRepo } from './commands/repo.ts'
 import { runScope } from './commands/scope.ts'
 import { runAmend } from './commands/amend.ts'
 import { runNote } from './commands/note.ts'
+import { runNotes } from './commands/notes.ts'
 import { runHook } from './commands/hook.ts'
 import { runLink } from './commands/link.ts'
 import { runCancel, runCurrent, runLog, runStart, runStop } from './commands/timer.ts'
@@ -26,8 +27,11 @@ Tracking:
   stop [id]                  Stop one timer (--last, --all, or pick when ambiguous)
   cancel [id]                Discard a running timer without recording it
   log "<title>"              Record a block that already happened
-  amend <id|--draft>         Fill in the title, project or note of an entry
-  note get|set <entryId>     Read or attach the rich note of an entry
+  amend <id|--draft>         Fill in the title, project or document of an entry
+  note path <id> --create    Where the entry's document lives, creating it
+  note save <id>             Record the document after editing it
+  note get|ls <id>           Read the document, or list the ones an entry has
+  notes migrate              Turn the legacy NDJSON notes into documents
   link <ids...> --issue K    Mark entries as registered in a Jira issue
 
 Reporting:
@@ -57,6 +61,7 @@ Common options:
   --include-running          Count entries whose timer is still running
   --timezone TZ              Override the timezone
   --db-path FILE             Use this database instead of the default
+  --docs-dir DIR             Where the documents live (default: beside the database)
 
 Summary options:
   --max-task-hours N         Cap per task before splitting (default 8)
@@ -86,7 +91,7 @@ Amend options:
   --draft                    Target the single running draft
   --title "..."              Set the title
   --project ID|NAME          Set the project
-  --note-json FILE           Attach a rich note
+  --note-md FILE             Seed a section of the document from a markdown file
 
 Link options:
   --issue KEY                The Jira issue the entries were written to
@@ -94,9 +99,15 @@ Link options:
   --unlink                   Undo the link, putting the entries back to pending
 
 Note options:
-  --note-json FILE           Rich note as JSON (summary plus what was touched)
-  --note-file FILE           Rich note body as plain text
+  --create                   With "note path", write the skeleton if there is none
+  --raw                      With "note get", print the document and nothing else
+  --note-md FILE             Seed a section from a markdown file
+  --section "..."            Which section --note-md lands in (default: Qué se hizo)
   --file / --command / --resource   Artifacts touched, repeatable
+
+Notes migrate options:
+  --dry-run                  Show what would be written without writing it
+  --limit N                  Only the first N entries
 `
 
 export async function route(argv: string[]): Promise<number> {
@@ -139,6 +150,8 @@ export async function route(argv: string[]): Promise<number> {
       return runAmend(rest)
     case 'note':
       return runNote(rest)
+    case 'notes':
+      return runNotes(rest)
     case 'hook':
       return runHook(rest)
     case 'link':
