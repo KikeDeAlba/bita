@@ -90,10 +90,10 @@ nada, así que consulta las veces que haga falta.
 5. **No encadenes comandos** con `|`, `;` ni `&&`, y no invoques el CLI con
    `pnpm run`: su banner rompería el parseo del JSON.
 6. **La Historia y la Épica son contenedores, no tareas.** No se les pone
-   estimación, no se les añaden worklogs, **no se les pone persona asignada** y
-   **no se cierran nunca**: cerrar la Historia dejaría huérfanas a las subtareas
+   estimación, no se les añaden worklogs, **no se les pone persona asignada ni
+   fecha de inicio** y **no se cierran nunca**: cerrar la Historia dejaría huérfanas a las subtareas
    que vengan después. Solo el issue de trabajo —Subtarea o Tarea— se estima, se
-   registra, **se asigna** y se transiciona.
+   registra, **se asigna**, **se fecha** y se transiciona.
 7. **Una sola Historia nueva por corrida sin preguntar.** Si el plan crea dos o
    más, para y enséñalas: casi siempre significa que la épica o el tema están
    mal. Jira no fusiona issues, así que una Historia duplicada se limpia moviendo
@@ -164,6 +164,11 @@ conector escribe con esa identidad y reasignar un worklog después es incómodo.
 **Guarda su `account_id`.** Es el que va en `assignee` de cada issue de trabajo
 que crees. Sin él la tarea nace sin dueño: no sale en el tablero de quien hizo
 el trabajo ni en los reportes de carga, y las horas quedan colgando de nadie.
+
+**Confirma también el id del campo «Fecha de inicio»** una vez por corrida, con
+`getJiraIssueTypeMetaWithFields`. En este tenant es `customfield_10015`, pero es
+un campo personalizado y su id puede no ser el mismo en otro sitio; comprobarlo
+cuesta una llamada y equivocarse deja la fecha en blanco sin avisar.
 
 ### 1. Resolver el alcance
 
@@ -343,6 +348,11 @@ En este orden, sin paralelismo:
    - `assignee`: **siempre**, con el `accountId` del paso 0. Es la única pieza
      del payload que Jira no deduce de nada y que nadie echa en falta hasta que
      busca su propio trabajo y no lo encuentra.
+   - **Fecha de inicio** (`customfield_10015` en este tenant): **siempre**, con
+     `days[0]` del grupo, en `YYYY-MM-DD`. Es el día en que empezó el trabajo,
+     no el día en que se registró: sin ella, los informes y las vistas de
+     cronograma colocan la tarea el día del volcado, que puede ser semanas
+     después.
    - `timetracking` con `originalEstimate` = `estimateHuman` y
      `remainingEstimate: "0m"` puede ir ya en la creación; ahorra una llamada.
 2. Solo si el proyecto no admitía `timetracking` en la pantalla de creación,
@@ -485,9 +495,9 @@ detecta posibles duplicados. **Avisa, no decide**: es una búsqueda difusa.
 
 ## Resumen final
 
-Una fila por tarea con seis marcas — crear, **asignar**, estimar, worklog,
-cerrar, atar — el enlace al issue y el total. Cualquier inconsistencia va
-**arriba**, no al final.
+Una fila por tarea con siete marcas — crear, **asignar**, **fechar**, estimar,
+worklog, cerrar, atar — el enlace al issue y el total. Cualquier inconsistencia
+va **arriba**, no al final.
 
 ## Reglas de agrupación
 
