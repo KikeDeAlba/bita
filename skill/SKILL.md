@@ -89,10 +89,11 @@ nada, así que consulta las veces que haga falta.
    quien mantiene las invariantes (instantes en UTC, claves foráneas, ids).
 5. **No encadenes comandos** con `|`, `;` ni `&&`, y no invoques el CLI con
    `pnpm run`: su banner rompería el parseo del JSON.
-6. **La Historia es un contenedor, no una tarea.** No se le pone estimación, no
-   se le añaden worklogs y **no se cierra nunca**: cerrarla dejaría huérfanas a
-   las subtareas que vengan después. Solo la Subtarea se estima, se registra y se
-   transiciona.
+6. **La Historia y la Épica son contenedores, no tareas.** No se les pone
+   estimación, no se les añaden worklogs, **no se les pone persona asignada** y
+   **no se cierran nunca**: cerrar la Historia dejaría huérfanas a las subtareas
+   que vengan después. Solo el issue de trabajo —Subtarea o Tarea— se estima, se
+   registra, **se asigna** y se transiciona.
 7. **Una sola Historia nueva por corrida sin preguntar.** Si el plan crea dos o
    más, para y enséñalas: casi siempre significa que la épica o el tema están
    mal. Jira no fusiona issues, así que una Historia duplicada se limpia moviendo
@@ -159,6 +160,10 @@ bita projects --json
 Si el CLI no responde, detente y dile cómo instalarlo. Confirma también con qué
 cuenta de Atlassian se van a registrar las horas (`atlassianUserInfo`): el
 conector escribe con esa identidad y reasignar un worklog después es incómodo.
+
+**Guarda su `account_id`.** Es el que va en `assignee` de cada issue de trabajo
+que crees. Sin él la tarea nace sin dueño: no sale en el tablero de quien hizo
+el trabajo ni en los reportes de carga, y las horas quedan colgando de nadie.
 
 ### 1. Resolver el alcance
 
@@ -275,8 +280,9 @@ Antes de crear nada:
    Sin épica (`hierarchy: story-subtask`), añade `AND parent IS EMPTY AND
    reporter = currentUser()`: sin épica que acote, el riesgo de reusar la
    Historia de otro es real.
-4. Si no hay empate, propón crearla. Al confirmar, créala y **persiste la
-   referencia en el mapeo de inmediato**, antes de tocar ninguna subtarea:
+4. Si no hay empate, propón crearla. Al confirmar, créala **sin `assignee`** —es
+   un contenedor, no trabajo de nadie— y **persiste la referencia en el mapeo de
+   inmediato**, antes de tocar ninguna subtarea:
    `bita map story <projectId> <themeId> <ISSUE-KEY>`.
 
 Si un grupo mezcla notas de temas distintos, gana el mayoritario y **dilo en la
@@ -334,6 +340,9 @@ En este orden, sin paralelismo:
      primero y después las viñetas de archivos, comandos y recursos tocados.
      Cierra siempre con la tabla de bloques y los ids de las entradas. Sin
      notas, solo la tabla, que es lo que había antes.
+   - `assignee`: **siempre**, con el `accountId` del paso 0. Es la única pieza
+     del payload que Jira no deduce de nada y que nadie echa en falta hasta que
+     busca su propio trabajo y no lo encuentra.
    - `timetracking` con `originalEstimate` = `estimateHuman` y
      `remainingEstimate: "0m"` puede ir ya en la creación; ahorra una llamada.
 2. Solo si el proyecto no admitía `timetracking` en la pantalla de creación,
@@ -476,8 +485,9 @@ detecta posibles duplicados. **Avisa, no decide**: es una búsqueda difusa.
 
 ## Resumen final
 
-Una fila por tarea con cinco marcas — crear, estimar, worklog, cerrar, atar —
-el enlace al issue y el total. Cualquier inconsistencia va **arriba**, no al final.
+Una fila por tarea con seis marcas — crear, **asignar**, estimar, worklog,
+cerrar, atar — el enlace al issue y el total. Cualquier inconsistencia va
+**arriba**, no al final.
 
 ## Reglas de agrupación
 
