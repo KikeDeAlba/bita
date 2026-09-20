@@ -12,6 +12,7 @@ const ALLOW = [
   'Bash(bita log:*)',
   'Bash(bita link:*)',
   'Bash(bita note:*)',
+  'Bash(bita notes:*)',
   'Bash(bita repo:*)',
   'Bash(bita map list:*)',
   'Bash(bita map set:*)',
@@ -39,6 +40,10 @@ const PROMPT_SUBMIT_HOOK = {
   hooks: [{ type: 'command', command: 'bita hook prompt-submit', timeout: 5 }],
 }
 
+const CHECKPOINT_HOOK = {
+  hooks: [{ type: 'command', command: 'bita hook checkpoint', timeout: 5 }],
+}
+
 const TOUCHED_HOOK = {
   matcher: 'Edit|Write',
   hooks: [
@@ -51,10 +56,20 @@ const TOUCHED_HOOK = {
   ],
 }
 
-const EVENT_HOOKS = {
-  SessionStart: SESSION_START_HOOK,
-  UserPromptSubmit: PROMPT_SUBMIT_HOOK,
-  PostToolUse: TOUCHED_HOOK,
+const EVENT_HOOKS = [
+  ['SessionStart', SESSION_START_HOOK],
+  ['UserPromptSubmit', PROMPT_SUBMIT_HOOK],
+  ['UserPromptSubmit', CHECKPOINT_HOOK],
+  ['PostToolUse', TOUCHED_HOOK],
+]
+
+function hooksByEvent() {
+  const grouped = {}
+  for (const [event, hook] of EVENT_HOOKS) {
+    grouped[event] ??= []
+    grouped[event].push(hook)
+  }
+  return grouped
 }
 
 const path = process.argv[2]
@@ -65,7 +80,7 @@ function printManualBlock() {
     JSON.stringify(
       {
         permissions: { allow: ALLOW, ask: ASK },
-        hooks: Object.fromEntries(Object.entries(EVENT_HOOKS).map(([event, hook]) => [event, [hook]])),
+        hooks: hooksByEvent(),
       },
       null,
       2,
@@ -105,7 +120,7 @@ settings.permissions.ask.push(...addedAsk)
 settings.hooks ??= {}
 
 const addedHooks = []
-for (const [event, hook] of Object.entries(EVENT_HOOKS)) {
+for (const [event, hook] of EVENT_HOOKS) {
   settings.hooks[event] ??= []
   const command = hook.hooks[0].command
   const present = settings.hooks[event].some((entry) =>
@@ -113,7 +128,7 @@ for (const [event, hook] of Object.entries(EVENT_HOOKS)) {
   )
   if (!present) {
     settings.hooks[event].push(hook)
-    addedHooks.push(event)
+    addedHooks.push(command)
   }
 }
 

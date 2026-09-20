@@ -29,6 +29,8 @@ import type { NoteSource } from '../../state/notes.ts'
 import { findEntryWithProject } from '../../db/entries.ts'
 import { recordEntryDoc } from '../../docs/record.ts'
 import { recordTouch } from '../../db/touches.ts'
+import { checkpointStatus, findDocForEntry, type CheckpointStatus } from '../../db/docs.ts'
+import { resolveDocPath } from '../../docs/paths.ts'
 import { readConfig, setScopeMapping } from '../../state/config.ts'
 import { currentRepoIdentity } from './repo.ts'
 import { resolveMappedProject } from '../resolve-project.ts'
@@ -186,6 +188,12 @@ async function recordDoc(
     ...(seed ? { section: seed } : {}),
   })
   return recorded?.path ?? null
+}
+
+function checkpointNote(state: CheckpointStatus | undefined): string {
+  if (!state) return 'none'
+  if (!state.lastNoteAt) return 'not written yet'
+  return state.touchedSinceNote === 0 ? 'up to date' : `${state.touchedSinceNote} files since`
 }
 
 function recordArtifacts(ctx: LocalContext, entryId: number, args: ParsedArgs): void {
@@ -359,16 +367,35 @@ export function runCurrent(argv: string[]): number {
   const ctx = createLocalContext(args)
 
   try {
-    const running = listRunning(ctx.db).map((row) => enrich(ctx, row))
+    const rows = listRunning(ctx.db)
+    const running = rows.map((row) => enrich(ctx, row))
     const totalSeconds = running.reduce((sum, entry) => sum + entry.durationSeconds, 0)
+    const status = checkpointStatus(
+      ctx.db,
+      rows.map((row) => row.id),
+    )
 
     if (json) {
       writeJson(
-        successEnvelope('current', running, {
-          runningCount: running.length,
-          totalSeconds,
-          totalHuman: formatDuration(totalSeconds),
-        }),
+        successEnvelope(
+          'current',
+          running.map((entry) => {
+            const state = status.get(entry.id)
+            const stored = findDocForEntry(ctx.db, entry.id)
+            return {
+              ...entry,
+              docPath: stored ? resolveDocPath(ctx.docsRoot, stored.relPath) : null,
+              lastNoteAt: state?.lastNoteAt ?? null,
+              touchedSinceNote: state?.touchedSinceNote ?? 0,
+            }
+          }),
+          {
+            runningCount: running.length,
+            totalSeconds,
+            totalHuman: formatDuration(totalSeconds),
+            docsRoot: ctx.docsRoot,
+          },
+        ),
       )
       return 0
     }
@@ -386,6 +413,7 @@ export function runCurrent(argv: string[]): number {
           { header: 'PROJECT' },
           { header: 'DESCRIPTION' },
           { header: 'ELAPSED', align: 'right' },
+          { header: 'DOCUMENT' },
         ],
         running.map((entry) => [
           String(entry.id),
@@ -393,9 +421,14 @@ export function runCurrent(argv: string[]): number {
           entry.projectName ?? '(no project)',
           entry.description,
           entry.durationHuman,
+          checkpointNote(status.get(entry.id)),
         ]),
       ),
     )
+    for (const entry of running) {
+      const stored = findDocForEntry(ctx.db, entry.id)
+      if (stored) writeOut(`  #${entry.id} ${resolveDocPath(ctx.docsRoot, stored.relPath)}`)
+    }
     if (running.length > 1) {
       writeOut('')
       writeOut(`${running.length} timers, ${formatDuration(totalSeconds)} of overlapping time.`)

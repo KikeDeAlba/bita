@@ -173,6 +173,36 @@ export function deleteDoc(db: DatabaseSync, entryId: number, relPath: string): b
   return Number(result.changes) > 0
 }
 
+export interface CheckpointStatus {
+  lastNoteAt: string | null
+  touchedSinceNote: number
+}
+
+export function checkpointStatus(db: DatabaseSync, entryIds: number[]): Map<number, CheckpointStatus> {
+  const byEntry = new Map<number, CheckpointStatus>()
+  if (entryIds.length === 0) return byEntry
+
+  const placeholders = entryIds.map(() => '?').join(', ')
+  const rows = queryAll<{ entry_id: number; last_note_at: string | null; touched: number }>(
+    db.prepare(
+      `SELECT e.id AS entry_id,
+              d.recorded_at AS last_note_at,
+              (SELECT COUNT(*) FROM entry_touches t
+                WHERE t.entry_id = e.id
+                  AND (d.recorded_at IS NULL OR t.first_seen_at > d.recorded_at)) AS touched
+       FROM entries e
+       LEFT JOIN entry_docs d ON d.entry_id = e.id AND d.kind = 'note'
+       WHERE e.id IN (${placeholders})`,
+    ),
+    ...entryIds,
+  )
+
+  for (const row of rows) {
+    byEntry.set(row.entry_id, { lastNoteAt: row.last_note_at, touchedSinceNote: row.touched })
+  }
+  return byEntry
+}
+
 export function countDocs(db: DatabaseSync): number {
   return queryOne<{ total: number }>(db.prepare('SELECT COUNT(*) AS total FROM entry_docs'))?.total ?? 0
 }
