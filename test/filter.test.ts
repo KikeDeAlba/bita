@@ -1,45 +1,36 @@
+import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import assert from 'node:assert/strict'
-import { matchesTagFilter, withinLocalRange } from '../src/domain/filter.ts'
+import { matchesRegistration, withinLocalRange } from '../src/domain/filter.ts'
 import { makeEntry } from './helpers/entries.ts'
 
-test('matches any of the requested tags by default', () => {
-  const filter = { include: ['pending', 'urgent'], exclude: [], mode: 'any' as const }
-
-  assert.equal(matchesTagFilter({ tags: ['pending'] }, filter), true)
-  assert.equal(matchesTagFilter({ tags: ['other'] }, filter), false)
+test('any keeps both registered and pending entries', () => {
+  assert.equal(matchesRegistration({ registered: true }, 'any'), true)
+  assert.equal(matchesRegistration({ registered: false }, 'any'), true)
 })
 
-test('requires every tag in all mode', () => {
-  const filter = { include: ['pending', 'urgent'], exclude: [], mode: 'all' as const }
-
-  assert.equal(matchesTagFilter({ tags: ['pending'] }, filter), false)
-  assert.equal(matchesTagFilter({ tags: ['pending', 'urgent'] }, filter), true)
+test('pending keeps only what has not reached jira', () => {
+  assert.equal(matchesRegistration({ registered: false }, 'pending'), true)
+  assert.equal(matchesRegistration({ registered: true }, 'pending'), false)
 })
 
-test('excludes take precedence over includes', () => {
-  const filter = { include: ['pending'], exclude: ['skip'], mode: 'any' as const }
-
-  assert.equal(matchesTagFilter({ tags: ['pending', 'skip'] }, filter), false)
+test('registered keeps only what already reached jira', () => {
+  assert.equal(matchesRegistration({ registered: true }, 'registered'), true)
+  assert.equal(matchesRegistration({ registered: false }, 'registered'), false)
 })
 
-test('ignores case when comparing tag names', () => {
-  const filter = { include: ['Pending'], exclude: [], mode: 'any' as const }
-
-  assert.equal(matchesTagFilter({ tags: ['pending'] }, filter), true)
+test('keeps an entry whose local day falls inside the range', () => {
+  const entry = makeEntry({ start: '2026-09-16T16:00:00Z' })
+  assert.equal(withinLocalRange(entry, '2026-09-16', '2026-09-16'), true)
 })
 
-test('untagged mode only keeps entries with no tags at all', () => {
-  const filter = { include: [], exclude: [], mode: 'any' as const, untaggedOnly: true }
-
-  assert.equal(matchesTagFilter({ tags: [] }, filter), true)
-  assert.equal(matchesTagFilter({ tags: ['pending'] }, filter), false)
+test('drops an entry whose local day falls outside the range', () => {
+  const entry = makeEntry({ start: '2026-09-16T16:00:00Z' })
+  assert.equal(withinLocalRange(entry, '2026-09-17', '2026-09-18'), false)
 })
 
-test('drops the extra days that the widened query brought back', () => {
-  const inside = makeEntry({ start: '2026-09-16T16:00:00Z' })
-  const outside = makeEntry({ start: '2026-09-21T16:00:00Z' })
-
-  assert.equal(withinLocalRange(inside, '2026-09-15', '2026-09-19'), true)
-  assert.equal(withinLocalRange(outside, '2026-09-15', '2026-09-19'), false)
+test('judges the range by the local day, not by the utc instant', () => {
+  const lateNight = makeEntry({ start: '2026-09-17T05:00:00Z' })
+  assert.equal(lateNight.localDay, '2026-09-16')
+  assert.equal(withinLocalRange(lateNight, '2026-09-16', '2026-09-16'), true)
+  assert.equal(withinLocalRange(lateNight, '2026-09-17', '2026-09-17'), false)
 })

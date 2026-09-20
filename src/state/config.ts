@@ -3,7 +3,7 @@ import { DEFAULT_STORY_THEMES, type StoryTheme } from '../config/constants.ts'
 import os from 'node:os'
 import path from 'node:path'
 
-export const CONFIG_DIR = path.join(os.homedir(), '.config', 'toggl-track-cli')
+export const CONFIG_DIR = path.join(os.homedir(), '.config', 'bita')
 export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json')
 
 export type HierarchyStrategy = 'epic-story-subtask' | 'story-subtask' | 'flat-task'
@@ -15,7 +15,7 @@ export interface StoryRef {
 }
 
 export interface ProjectMapping {
-  togglProjectName: string
+  projectName: string
   jiraProjectKey: string
   hierarchy?: HierarchyStrategy
   epicResolved?: boolean
@@ -32,9 +32,9 @@ export interface ProjectMapping {
 
 export type RepoSlugSource = 'remote' | 'path' | 'basename'
 
-export interface RepoMapping {
-  togglProjectId: number
-  togglProjectName: string
+export interface ScopeMapping {
+  projectId: number
+  projectName: string
   workspaceId?: number
   slugSource: RepoSlugSource
   verifiedAt?: string
@@ -53,17 +53,65 @@ export interface AppConfig {
   jira?: JiraConfig
   defaults?: { issueTypeName?: string; pendingTagName?: string; storyThemes?: StoryTheme[] }
   projectMapping: Record<string, ProjectMapping>
-  repoMapping: Record<string, RepoMapping>
+  scopeMapping: Record<string, ScopeMapping>
 }
 
 export function emptyConfig(): AppConfig {
-  return { version: 1, projectMapping: {}, repoMapping: {} }
+  return { version: 1, projectMapping: {}, scopeMapping: {} }
+}
+
+export const LEGACY_CONFIG_PATH = path.join(
+  os.homedir(),
+  '.config',
+  'toggl-track-cli',
+  'config.json',
+)
+
+interface LegacyProjectMapping extends ProjectMapping {
+  togglProjectName?: string
+}
+
+interface LegacyScopeMapping extends ScopeMapping {
+  togglProjectId?: number
+  togglProjectName?: string
+  workspaceId?: number
+}
+
+export function migrateLegacyKeys(parsed: Partial<AppConfig>): Partial<AppConfig> {
+  const projectMapping: Record<string, ProjectMapping> = {}
+  for (const [key, value] of Object.entries(parsed.projectMapping ?? {})) {
+    const legacy = value as LegacyProjectMapping
+    const { togglProjectName, ...rest } = legacy
+    projectMapping[key] = { ...rest, projectName: rest.projectName ?? togglProjectName ?? '' }
+  }
+
+  const legacyScopes = (parsed as { repoMapping?: Record<string, unknown> }).repoMapping
+  const scopeMapping: Record<string, ScopeMapping> = {}
+  for (const [key, value] of Object.entries(parsed.scopeMapping ?? legacyScopes ?? {})) {
+    const legacy = value as LegacyScopeMapping
+    const { togglProjectId, togglProjectName, workspaceId, ...rest } = legacy
+    scopeMapping[key] = {
+      ...rest,
+      projectId: rest.projectId ?? togglProjectId ?? 0,
+      projectName: rest.projectName ?? togglProjectName ?? '',
+    }
+  }
+
+  const { repoMapping: _dropped, ...withoutLegacy } = parsed as Partial<AppConfig> & {
+    repoMapping?: unknown
+  }
+  return { ...withoutLegacy, projectMapping, scopeMapping }
 }
 
 export async function readConfig(configPath = CONFIG_PATH): Promise<AppConfig> {
   try {
-    const raw = await readFile(configPath, 'utf8')
-    const parsed = JSON.parse(raw) as Partial<AppConfig>
+    let raw: string
+    try {
+      raw = await readFile(configPath, 'utf8')
+    } catch {
+      raw = await readFile(LEGACY_CONFIG_PATH, 'utf8')
+    }
+    const parsed = migrateLegacyKeys(JSON.parse(raw) as Partial<AppConfig>)
     return {
       version: parsed.version ?? 1,
       ...(parsed.workspaceId !== undefined ? { workspaceId: parsed.workspaceId } : {}),
@@ -71,7 +119,7 @@ export async function readConfig(configPath = CONFIG_PATH): Promise<AppConfig> {
       ...(parsed.jira !== undefined ? { jira: parsed.jira } : {}),
       ...(parsed.defaults !== undefined ? { defaults: parsed.defaults } : {}),
       projectMapping: parsed.projectMapping ?? {},
-      repoMapping: parsed.repoMapping ?? {},
+      scopeMapping: parsed.scopeMapping ?? {},
     }
   } catch {
     return emptyConfig()
@@ -84,43 +132,43 @@ export async function writeConfig(config: AppConfig, configPath = CONFIG_PATH): 
 }
 
 export async function setProjectMapping(
-  togglProjectId: number,
+  projectId: number,
   mapping: ProjectMapping,
   configPath = CONFIG_PATH,
 ): Promise<AppConfig> {
   const config = await readConfig(configPath)
-  config.projectMapping[String(togglProjectId)] = mapping
+  config.projectMapping[String(projectId)] = mapping
   await writeConfig(config, configPath)
   return config
 }
 
 export async function unsetProjectMapping(
-  togglProjectId: number,
+  projectId: number,
   configPath = CONFIG_PATH,
 ): Promise<boolean> {
   const config = await readConfig(configPath)
-  const key = String(togglProjectId)
+  const key = String(projectId)
   if (!(key in config.projectMapping)) return false
   delete config.projectMapping[key]
   await writeConfig(config, configPath)
   return true
 }
 
-export async function setRepoMapping(
+export async function setScopeMapping(
   slug: string,
-  mapping: RepoMapping,
+  mapping: ScopeMapping,
   configPath = CONFIG_PATH,
 ): Promise<AppConfig> {
   const config = await readConfig(configPath)
-  config.repoMapping[slug] = mapping
+  config.scopeMapping[slug] = mapping
   await writeConfig(config, configPath)
   return config
 }
 
-export async function unsetRepoMapping(slug: string, configPath = CONFIG_PATH): Promise<boolean> {
+export async function unsetScopeMapping(slug: string, configPath = CONFIG_PATH): Promise<boolean> {
   const config = await readConfig(configPath)
-  if (!(slug in config.repoMapping)) return false
-  delete config.repoMapping[slug]
+  if (!(slug in config.scopeMapping)) return false
+  delete config.scopeMapping[slug]
   await writeConfig(config, configPath)
   return true
 }
@@ -131,15 +179,15 @@ export function storyThemes(config: AppConfig): StoryTheme[] {
 }
 
 export async function setStory(
-  togglProjectId: number,
+  projectId: number,
   themeId: string,
   story: StoryRef,
   configPath = CONFIG_PATH,
 ): Promise<AppConfig> {
   const config = await readConfig(configPath)
-  const key = String(togglProjectId)
+  const key = String(projectId)
   const mapping = config.projectMapping[key]
-  if (!mapping) throw new Error(`Toggl project ${togglProjectId} is not mapped to a Jira project.`)
+  if (!mapping) throw new Error(`Toggl project ${projectId} is not mapped to a Jira project.`)
   mapping.stories = { ...mapping.stories, [themeId]: story }
   await writeConfig(config, configPath)
   return config

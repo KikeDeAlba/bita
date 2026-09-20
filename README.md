@@ -1,261 +1,271 @@
-# toggl-track-cli
+# bita
 
-Reads Toggl Track time entries and turns them into Jira-ready tasks. The CLI does
-the API work, the date arithmetic and the grouping; the `toggl-jira` Claude Code
-skill in `skill/` drives Jira on top of its JSON output.
+Registro de tiempo local, en SQLite, pensado para que Claude Code lo lea y lo
+escriba. Mide el trabajo mientras ocurre y después lo vuelca a Jira: un issue por
+título y proyecto, un worklog por cada bloque medido, con estimación y cierre.
 
-## Why it exists
+El nombre viene de bitácora.
 
-Time is tracked in Toggl and has to end up in Jira as real worklogs, not as
-guessed estimates. Each Toggl entry carries a title, a project and a state tag:
-`pending` until it reaches Jira, `registered` afterwards. The tag is the source of
-truth, so the flow is safe to re-run.
+## Por qué existe
 
-## Requirements
+Antes esto hablaba con la API de Toggl Track. El plan gratuito tiene un límite
+horario de llamadas que bloqueó el trabajo tres veces en una sola sesión, dos de
+ellas a mitad de una escritura, dejando Jira por delante del registro de tiempo.
 
-Node 22.18 or newer (the CLI runs TypeScript directly, no build step) and macOS
-for the keychain integration.
+Casi toda la complejidad del CLI servía para rodear ese límite, no para resolver
+el problema: el throttle, los reintentos, la paginación, el caché de 24 horas, el
+espejo del cronómetro en curso y los tags usados como estado porque no había
+dónde guardarlo. Con una base local todo eso desaparece.
+
+Quedan dos ventajas que no se buscaban:
+
+- **Varios cronómetros a la vez.** El límite de uno era de Toggl. Aquí un
+  cronómetro corriendo es una fila con `stopped_at` nulo, y puede haber las que
+  hagan falta.
+- **El estado es una clave foránea.** Una entrada está pendiente mientras no
+  tenga fila en `jira_links`. No hay tag que pueda diverger ni retaggeo a medias.
+
+## Requisitos
+
+**Node 24 o superior.** No es negociable: bita usa `node:sqlite` y el borrado de
+tipos nativo, así que corre los `.ts` sin compilar. No hay dependencias de
+runtime, ni bundler, ni paso de build.
 
 ```sh
+node -v    # debe decir v24 o más
+```
+
+## Instalación
+
+### 1. Clonar e instalar
+
+```sh
+git clone git@github.com:KikeDeAlba/bita.git
+cd bita
 pnpm install
-ln -sfn "$PWD/src/bin/toggl.ts" ~/Library/pnpm/bin/toggl
 ```
 
-The symlink points at the source, so edits take effect with no reinstall.
-`pnpm link --global` no longer exists in pnpm 11.
+Las únicas dependencias son TypeScript y `@types/node`, y solo para el
+`typecheck`.
 
-## Authentication
-
-The token lives in the macOS keychain under the service `toggl-track`. It is never
-passed through `argv`, so it never shows up in `ps` or in the shell history.
+### 2. Correr el instalador
 
 ```sh
-toggl auth login       # prompts, verifies against /me, then stores it
-toggl auth status
-toggl auth logout
+./scripts/install.sh
 ```
 
-`TOGGL_API_TOKEN` takes precedence over the keychain, which keeps CI and one-off
-runs working. Get a token at https://track.toggl.com/profile.
+Hace cuatro cosas, y todas son idempotentes: puedes volver a correrlo cuando
+quieras.
 
-## The live timer
+| Paso | Qué hace |
+|---|---|
+| Binario | Enlaza `bita` en tu directorio de binarios (`$PNPM_HOME/bin`, o `~/.local/bin`) |
+| Skill | `~/.claude/skills/bita` → `skill/` del repo |
+| Comandos | `~/.claude/commands/bita-*.md` → `commands/` del repo |
+| Settings | Añade los permisos y el hook `SessionStart` a `~/.claude/settings.json` |
 
-Claude proposes starting a timer when a session is about to leave an artifact —
-a commit, a file, a deployed resource, a migration, a merge request, a root
-cause — and not when it will only produce an answer. The bridge rule is the one
-already in the user's own guide: **if the work is going to enter a worktree, the
-timer starts.**
+Todo son **symlinks al repo**, a propósito: cuando actualizas el repo, la skill y
+los comandos se actualizan contigo, y un cambio de flag en el CLI viaja en el
+mismo commit que su documentación.
+
+Antes de tocar `settings.json` deja una copia en `settings.json.backup`, y si no
+lo puede parsear no lo escribe: imprime el bloque para que lo pegues a mano.
+
+Si tu directorio de binarios está en otro sitio:
 
 ```sh
-toggl start "Ajustar el pipeline"      # 1 call, tagged Pending, project from the repo
-toggl current                          # 1 call
-toggl stop --note-json /tmp/note.json  # 1 call on the happy path
-toggl cancel --yes                     # discards a mis-started entry
+BITA_BIN_DIR=~/bin ./scripts/install.sh
 ```
 
-`start` refuses when something is already running and exits 9. That is not
-politeness: a `POST` with a negative duration **silently stops** the previous
-entry, so accepting it would truncate a session with nobody noticing. Use
-`--switch` to close the previous one on purpose.
+### 3. Comprobar
 
-The happy path of `stop` costs one call because a local mirror of the running
-entry lives in `~/.local/state/toggl-track-cli/running.json`. When the mirror is
-missing or older than twelve hours, it reconciles against the `current` endpoint
-for one extra call.
+```sh
+bita --version
+bita projects
+```
 
-### The rich note
+La base se crea sola en `~/.local/share/bita/bita.db` al primer uso. `BITA_DB_PATH`
+la mueve a otro sitio, que es también la forma de probar cosas sin tocar la real.
 
-Toggl's description is the grouping key and the Jira summary, so it stays short.
-The write-up goes to an append-only sidecar,
-`~/.local/state/toggl-track-cli/entry-notes.ndjson`, and `summary --json`
-exposes it per group as `notes[]`. A line that does not parse is skipped rather
-than blinding the whole file, and the last record for an entry wins.
+### 4. Dar de alta un repositorio
+
+Esto es lo que enciende la integración con Claude. Un solo comando crea el
+proyecto y lo mapea:
+
+```sh
+bita repo init                     # el repositorio actual
+bita repo init ~/dev/otro/repo     # o el que le pases
+```
+
+El nombre del proyecto sale de la carpeta; `--name "Otro nombre"` lo cambia. Si
+ya existe un proyecto con ese nombre **lo reutiliza**, que es lo que quieres
+cuando el front y el back de lo mismo deben compartir proyecto.
+
+Si prefieres separarlo en dos pasos, o mapear varios repositorios a un proyecto
+que ya existe:
+
+```sh
+bita project add "Mi proyecto"     # devuelve un id
+bita repo set . <projectId>
+```
+
+**Mientras un repositorio no esté mapeado, el hook no dice nada.** En cuanto lo
+está, al abrir una sesión de Claude Code en él se inyecta la regla que le pide
+ofrecer el cronómetro cuando el trabajo vaya a dejar un artefacto —un commit, un
+archivo, un despliegue— y callarse cuando solo vayas a leer o preguntar.
+
+El mapeo se guarda por el **slug** del repositorio, que sale del remoto de git
+(`github.com/kikedealba/bita`), así que sobrevive a que muevas la carpeta.
+
+Reabre la sesión de Claude Code para que cargue el hook, la skill y los comandos.
+
+### 5. Conectar Jira
+
+Jira no se toca desde el CLI: lo escribe Claude por el conector de Atlassian. Lo
+único que se guarda aquí es a qué tablero va cada proyecto, y se pregunta solo la
+primera vez:
+
+```sh
+bita map set <projectId> <JIRAKEY> --parent <JIRAKEY-123>
+bita map list
+```
+
+## Uso
+
+```sh
+bita start "Despliegue de infraestructura"   # arranca; puede haber varios
+bita ls                                      # qué está corriendo ahora
+bita stop 12 --note-json /tmp/nota.json      # para uno y le adjunta la nota
+bita log "Sesión con QA" --from 14:00 --for 1h
+bita summary --pending --json                # agrupado y listo para Jira
+bita link 12 13 --issue DD-1896              # marca como registradas
+bita repo init ~/dev/otro/repo               # da de alta otro repositorio
+```
+
+`bita --help` lista todo.
+
+### Formato de salida
+
+Todos los comandos aceptan `--json` y emiten un solo documento en stdout:
 
 ```json
-{
-  "body": "Two to four sentences on what was done and why.",
-  "artifacts": {
-    "files": ["src/x.ts"],
-    "commands": ["terraform apply"],
-    "resources": ["https://…"]
-  }
-}
+{ "schemaVersion": 3, "ok": true, "command": "summary", "data": {}, "meta": {} }
 ```
 
-Losing the sidecar degrades the issue description back to the block table; it
-never affects the time itself.
+Los errores salen con `ok: false` y un `error.code` estable. Los avisos van a
+stderr, nunca a stdout, para que el JSON se pueda parsear tal cual.
 
-### Repository to project
+## Contadores en blanco
+
+El caso normal es arrancar el reloj **antes de saber en qué se trabaja**:
 
 ```sh
-toggl repo show                 # the slug inferred here, and its mapping
-toggl repo set . 222494997      # remember it
+cd ~/dev && bita start        # sin título y sin proyecto
 ```
 
-The slug comes from the git remote when there is one, normalised so that the ssh
-and https forms collapse to the same value, and from the path under `~/dev`
-otherwise. Nothing assumes a fixed directory depth.
+Eso crea un borrador. Mientras siga sin título queda fuera de `summary`, así que
+no puede llegar a Jira por accidente. Se rellena después, y en buena parte solo:
 
-## The Jira hierarchy
+| Qué | Quién lo pone |
+|---|---|
+| Título y descripción | Claude, en cuanto un mensaje dice en qué se va a trabajar |
+| Proyecto | Claude por el prompt, o el hook por el primer archivo que se cambia |
+| Archivos tocados | El hook, en cada edición |
 
-Levels in this tenant: `Epic` = 1, `Historia`/`Tarea`/`Error` = 0,
-`Subtarea` = −1, and a parent must sit above its child. **A Historia therefore
-cannot contain Tareas, only Subtareas**, which is why work items are subtasks:
-
-```
-Epic        the project container, already there
-  └─ Historia     the theme, inferred from a closed vocabulary, reused
-       └─ Subtarea    one Toggl group, with its worklogs
-```
-
-Time rolls up Subtarea → Historia → Epic. The Historia is a container: it is
-never estimated and **never closed**, because closing it would orphan the
-subtasks that come later.
-
-Story names come from a closed list in `defaults.storyThemes`, cached per theme
-id in the mapping so renaming the visible name breaks nothing. Matching an
-existing story uses exact normalised equality, never Jira's `~` operator, which
-tokenises and would match "Infraestructura de pruebas del cliente" for
-"Infraestructura".
-
-## Commands
+El hook `UserPromptSubmit` recuerda que hay un contador sin nombre y se calla
+solo en cuanto lo tiene. A mano:
 
 ```sh
-toggl whoami
-toggl projects                       # Toggl projects and their Jira mapping
-toggl tags
-toggl entries week
-toggl summary --pending --json       # what the skill consumes
-toggl tag 123 456 --add registered --remove pending --apply
-toggl map set 209876543 DPF --issue-type "Tarea"
-toggl config get
+bita amend --draft --title "Lo que sea" --project Apartados
 ```
 
-Range presets: `today`, `yesterday`, `week`, `last-week`, `month`, `last-month`,
-or `--from`/`--to` (both inclusive) and `--last-days N`.
+## Proyectos y repositorios
 
-## Grouping rules
+**Un repo no es un proyecto.** Los proyectos suelen ser grupos con varios repos
+dentro, y el grupo no tiene `.git`: lo tienen los repos.
 
-One Jira task per **project + title**, across the whole range. A task that spans
-several days stays one task. Inside it, **one worklog per Toggl entry**, each with
-its real start time; the group total becomes the original estimate.
-
-The **original estimate is rounded up to the next half hour** while the worklogs
-keep the exact Toggl time: 3h 43m of tracked work becomes a 4h estimate made of
-worklogs that still add up to 3h 43m. `--estimate-step-minutes N` changes the step.
-The rounding can never push a task past the cap below, because a capped task holds
-at most a whole number of steps.
-
-A task holds at most **8 hours**. Anything above that is split into
-`title (1/n)`, `title (2/n)`, packing whole entries where possible and slicing a
-single entry only when it exceeds the cap by itself. Change the cap with
-`--max-task-hours N`.
-
-Descriptions are compared with whitespace collapsed and trailing punctuation
-removed, and case matters unless `--case-insensitive` is passed. Similar titles
-are never merged automatically: creating the wrong issue is worse than creating
-two.
-
-## Output contract
-
-With `--json`, stdout carries exactly one JSON document and nothing else. Every
-warning, progress line and error goes to stderr. Durations arrive preformatted
-(`timeSpent`, `totalHuman`) and `startedJira` is already in the shape Jira wants,
-`yyyy-MM-dd'T'HH:mm:ss.SSSZ` with the offset written without a colon. Nothing
-downstream should do date arithmetic.
-
-`totalSeconds` is the source of truth; the decimal hours are for reading.
-
-Exit codes: `0` ok, `1` unexpected, `2` usage, `3` no token, `4` auth rejected,
-`5` rate limited, `6` network, **`7` partial write**, **`8` hourly quota
-exhausted**, **`9` conflict** (a timer is already running, or `stop
---require-running` found none).
-
-There are two separate Toggl limits. The leaky bucket returns `429` at roughly one
-request per second and is worth retrying, which the client does. The **hourly
-quota** on the free plan returns `402` with the reset window in the body; retrying
-cannot help, so it fails fast with the wait in minutes. Because of that quota,
-`/me` and the project catalog are cached and `--offline` runs off the cache alone
-rather than spending a call.
-
-A quota error is safe by construction: it is raised before anything is written.
-But it matters for the Jira flow — if the quota runs out **between** creating the
-worklogs in Jira and retagging in Toggl, the entries stay `pending` and a re-run
-would duplicate the worklogs. Check the quota has room before starting a write
-run.
-
-## Writing tags
-
-`toggl tag` is the only destructive command and it is a **dry run unless you pass
-`--apply`**.
-
-It computes the resulting tag set per entry and sends `op: "replace"` with the
-full array, grouped so that entries with different extra tags never share a
-request. `op: "remove"` is avoided on purpose: it has a long-standing bug in
-Toggl's bulk edit, and RFC 6902 defines it over an index rather than a value.
-Batches are capped at 100 ids.
-
-A `200` does not mean success: the response carries a `failure[]` array and the
-patch is applied partially, with no rollback. After writing, the CLI reads the
-entries back and compares, which is what catches a silent no-op. Every attempt is
-appended to `~/.local/state/toggl-track-cli/tag-journal.ndjson` before and after
-the request.
-
-## Order of operations, and why
-
-In Jira: create the issue, set the estimate, add the worklogs, transition. Then,
-and only then, retag in Toggl.
-
-The tag is the commit point. If it flipped first and a later step failed, the
-hours would silently never be registered. With this order the worst case is a
-duplicated worklog, which is visible. That matters because **the Jira connector
-cannot delete worklogs** — only create and update them.
-
-## Endpoint selection
-
-`/me/time_entries` for explicit ranges of 31 days or less: one request, and it is
-filtered client-side by tag. Reports v3 for anything longer, and for a tag filter
-without an explicit range, because it filters `tag_ids` server-side and paginates.
-
-The 1000-entry cap of `/me/time_entries` applies *before* any filtering, so a wide
-`--pending` scan has to go through Reports or it would silently return a subset.
-
-Dates are widened by a day on each side before querying and then filtered by local
-day, because a bare `end_date` is read as `00:00:00` in an undocumented zone.
-Removing that widening loses the last day with no visible error.
-
-## Configuration
-
-`~/.config/toggl-track-cli/config.json`, mode `0600`, outside the repository so
-that project names and Jira keys are never committed. It holds the workspace, the
-timezone, the Jira site and the Toggl-project-to-Jira-project mapping, keyed by
-Toggl project id rather than name, since names get renamed and ids do not.
-
-The catalog of projects, clients and tags is cached for 24 hours in
-`~/.cache/toggl-track-cli/`; `--no-cache` refreshes it.
-
-## The skill
-
-`skill/SKILL.md` is installed by symlinking it into the Claude Code skills
-directory:
+El mapeo va por **prefijo de ruta**, y gana el más largo que empate:
 
 ```sh
-ln -sfn "$PWD/skill" ~/.claude/skills/toggl-jira
+bita scope set gitlab.com/vivaaerobus/vb_solemti/apartados 42
+bita scope which .        # que prefijo empata aqui
+bita scope list
 ```
 
-It is versioned here because the procedure depends on the CLI flags: when a flag
-changes, both change in the same commit.
+Con eso, `apartados/api`, `apartados/front` y `apartados/workers` resuelven los
+tres a Apartados sin configurar nada mas. Se puede mapear un grupo y luego
+excepcionar un repo dentro, porque el prefijo mas largo manda. El empate es por
+segmentos, asi que `.../apartados` nunca cubre `.../apartados-legacy`.
 
-## Development
+Si no hay prefijo, `bita repo init` propone uno comparando los segmentos de la
+ruta con los nombres de proyecto que ya existen, ignorando mayusculas, guiones y
+guiones bajos. Solo empata si tras normalizar son identicos.
+
+## Cómo se agrupa
+
+Un grupo es **proyecto + título**, a lo largo de todo el rango, y se convierte en
+un issue de Jira. Cada entrada del grupo es un worklog con su hora real.
+
+La estimación original se redondea **hacia arriba** al siguiente medio punto: 3h
+43m medidas se registran como 4h de estimación con worklogs que suman 3h 43m. Un
+issue admite como máximo 8 horas; lo que se pasa se parte en `(1/n)`, `(2/n)`.
+
+## Solapes
+
+Los cronómetros simultáneos están permitidos, así que un día puede sumar más
+tiempo del que marca el reloj. `summary` y `entries` lo avisan:
+
+```
+Warning: 2026-09-19: 4h 8m tracked over 3h 7m of clock time (1h overlapping)
+```
+
+No lo impide. Solo evita que pase inadvertido.
+
+## Los comandos de Claude Code
+
+`commands/` tiene seis slash commands, enlazados por symlink desde
+`~/.claude/commands/`:
+
+| Comando | Qué hace |
+|---|---|
+| `/bita-start [título]` | Arranca un cronómetro. Sin título, lo infiere de la sesión y lo enseña antes |
+| `/bita-stop [id]` | Escribe la nota de lo que se hizo y para. Con varios abiertos, pregunta cuál |
+| `/bita-timers` | Qué está corriendo y cuánto llevas hoy |
+| `/bita-log <texto>` | Registra un bloque que ya pasó, cuando se trabajó sin cronómetro |
+| `/bita-init [ruta]` | Da de alta un repositorio: crea su proyecto, lo mapea y revisa el tablero |
+| `/bita-amend [id]` | Rellena a mano el título, el proyecto o la nota de un cronómetro |
+
+Viven en el repo por la misma razón que la skill: usan los flags del CLI, así que
+cambian en el mismo commit.
+
+## La skill
+
+`skill/SKILL.md` es la skill de Claude Code que envuelve el CLI: decide cuándo
+proponer el cronómetro, infiere la Historia de Jira a partir de las notas, y
+maneja la jerarquía Épica → Historia → Subtarea. Está enlazada por symlink desde
+`~/.claude/skills/bita`, para que el procedimiento y los flags cambien en el
+mismo commit.
+
+## Desarrollo
 
 ```sh
 pnpm typecheck
 pnpm test
 ```
 
-Rate limiting is a leaky bucket at roughly one request per second, so the client
-serialises requests 1.1s apart and backs off on 429 and 5xx.
+Los tests corren con `node --test` sobre los `.ts` directamente. No hay bundler.
 
-Tests inject a fake clock and a fake `fetch`, so nothing touches the network, the
-keychain or the wall clock. That is why `throttle` and `retry` take `now` and
-`sleep`: the one-second spacing and the backoff are asserted, not assumed.
+## Estructura
+
+```
+src/db/        el almacén: esquema, migraciones y consultas
+src/domain/    lógica pura: agrupación, duraciones, zonas horarias, solapes
+src/cli/       comandos y formato de salida
+src/state/     configuración y notas en disco
+skill/         la skill de Claude Code
+commands/      los slash commands
+scripts/       el instalador
+```
+
+El punto de corte es `EnrichedTimeEntry` (`src/domain/types.ts`): todo lo que
+está aguas abajo no sabe de dónde salieron los datos.

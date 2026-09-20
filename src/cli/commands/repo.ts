@@ -1,11 +1,14 @@
 import os from 'node:os'
-import { UsageError } from '../../http/errors.ts'
-import { parseCommandArgs, readBoolean, BASE_OPTIONS } from '../args.ts'
-import { createLeanContext } from '../lean-context.ts'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { UsageError } from '../../errors.ts'
+import { parseCommandArgs, readBoolean, readString, BASE_OPTIONS } from '../args.ts'
+import { createLocalContext } from '../local-context.ts'
+import { findProjectById, findProjectByName, insertProject } from '../../db/projects.ts'
 import { readRepoContext } from '../../state/git.ts'
 import { resolveRepoIdentity, type RepoIdentity } from '../../domain/repo.ts'
-import { readConfig, setRepoMapping, unsetRepoMapping } from '../../state/config.ts'
-import { renderTable } from '../table.ts'
+import { readConfig, setScopeMapping } from '../../state/config.ts'
+import { resolveMappedProject, suggestProject } from '../resolve-project.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
 
 export async function currentRepoIdentity(cwd = process.cwd()): Promise<RepoIdentity | null> {
@@ -22,16 +25,26 @@ export async function currentRepoIdentity(cwd = process.cwd()): Promise<RepoIden
 
 export async function runRepo(argv: string[]): Promise<number> {
   const subcommand = argv[0] ?? 'show'
-  const args = parseCommandArgs(argv.slice(1), {}, BASE_OPTIONS)
+  const args = parseCommandArgs(
+    argv.slice(1),
+    { name: { type: 'string' }, client: { type: 'string' }, scope: { type: 'string' } },
+    BASE_OPTIONS,
+  )
   const json = readBoolean(args, 'json')
 
   if (subcommand === 'show') {
     const identity = await currentRepoIdentity()
     const config = await readConfig()
-    const mapping = identity ? config.repoMapping[identity.slug] : undefined
+    const ctx = createLocalContext(args)
+    let resolved = null
+    try {
+      resolved = identity ? suggestProject(ctx.db, identity.slug, config) : null
+    } finally {
+      ctx.db.close()
+    }
 
     if (json) {
-      writeJson(successEnvelope('repo show', { repo: identity, mapping: mapping ?? null }))
+      writeJson(successEnvelope('repo show', { repo: identity, project: resolved }))
       return 0
     }
 
@@ -42,89 +55,112 @@ export async function runRepo(argv: string[]): Promise<number> {
 
     writeOut(`Slug    : ${identity.slug} (from ${identity.source})`)
     if (identity.branch) writeOut(`Branch  : ${identity.branch}`)
+
+    if (!resolved) {
+      writeOut('Project : not mapped. Run "bita repo init" to resolve it.')
+      return 0
+    }
+
+    writeOut(`Project : ${resolved.projectName} (${resolved.projectId})`)
     writeOut(
-      mapping
-        ? `Project : ${mapping.togglProjectName} (${mapping.togglProjectId})`
-        : `Project : not mapped. Run "toggl repo set . <togglProjectId>".`,
+      resolved.via === 'scope'
+        ? `Scope   : ${resolved.prefix}`
+        : `Scope   : none yet. "${resolved.prefix}" would be saved by "bita repo init".`,
     )
     return 0
   }
 
-  if (subcommand === 'list') {
+  if (subcommand === 'init') {
+    const [rawPath] = args.positionals
+    const target = rawPath === undefined || rawPath === '.' ? process.cwd() : resolve(rawPath)
+
+    if (!existsSync(target)) {
+      throw new UsageError(`No such directory: ${target}`)
+    }
+
+    const identity = await currentRepoIdentity(target)
+    if (!identity) {
+      throw new UsageError(`${target} is not inside a git repository.`)
+    }
+
     const config = await readConfig()
-    const rows = Object.entries(config.repoMapping).map(([slug, mapping]) => ({ slug, ...mapping }))
-
-    if (json) {
-      writeJson(successEnvelope('repo list', rows))
+    const mapped = resolveMappedProject(identity.slug, config)
+    if (mapped) {
+      if (json) {
+        writeJson(successEnvelope('repo init', { slug: identity.slug, ...mapped, created: false }))
+      } else {
+        writeOut(`${identity.slug} already resolves to ${mapped.projectName} (${mapped.projectId}).`)
+        writeOut(`Scope   : ${mapped.prefix}`)
+        writeOut(`Run "bita scope unset ${mapped.prefix}" first if you want to change it.`)
+      }
       return 0
     }
-    if (rows.length === 0) {
-      writeOut('No repository is mapped to a Toggl project yet.')
-      return 0
+
+    const explicitName = readString(args, 'name')
+    const ctx = createLocalContext(args)
+    let project
+    let created = false
+    let prefix = identity.slug
+
+    try {
+      const suggestion = explicitName === undefined ? suggestProject(ctx.db, identity.slug, config) : null
+
+      if (suggestion) {
+        project = { id: suggestion.projectId, name: suggestion.projectName }
+        prefix = suggestion.prefix
+      } else {
+        const projectName = explicitName ?? identity.name
+        const found = findProjectByName(ctx.db, projectName)
+        if (found) {
+          project = found
+        } else {
+          project = insertProject(ctx.db, {
+            name: projectName,
+            clientName: readString(args, 'client') ?? null,
+            createdAt: new Date().toISOString(),
+          })
+          created = true
+        }
+      }
+    } finally {
+      ctx.db.close()
     }
 
-    writeOut(
-      renderTable(
-        [{ header: 'REPOSITORY' }, { header: 'TOGGL PROJECT' }, { header: 'ID' }, { header: 'FROM' }],
-        rows.map((row) => [row.slug, row.togglProjectName, String(row.togglProjectId), row.slugSource]),
-      ),
-    )
-    return 0
-  }
+    const scopePrefix = readString(args, 'scope') ?? prefix
 
-  if (subcommand === 'set') {
-    const [rawSlug, rawProjectId] = args.positionals
-    if (!rawSlug || !rawProjectId) {
-      throw new UsageError('Usage: toggl repo set <slug|.> <togglProjectId>')
-    }
-
-    const projectId = Number(rawProjectId)
-    if (!Number.isInteger(projectId)) {
-      throw new UsageError(`Invalid Toggl project id: "${rawProjectId}".`)
-    }
-
-    const identity = rawSlug === '.' ? await currentRepoIdentity() : null
-    if (rawSlug === '.' && !identity) {
-      throw new UsageError('Not inside a git repository, so "." cannot be resolved.')
-    }
-    const slug = rawSlug === '.' ? (identity as RepoIdentity).slug : rawSlug
-
-    const ctx = await createLeanContext(args)
-    const project = ctx.catalog?.projects.get(projectId)
-    if (ctx.catalog && !project) {
-      throw new UsageError(
-        `Toggl project ${projectId} is not in the cached catalog. Run "toggl projects --no-cache" and try again.`,
-      )
-    }
-
-    await setRepoMapping(slug, {
-      togglProjectId: projectId,
-      togglProjectName: project?.name ?? String(projectId),
-      workspaceId: ctx.workspaceId,
-      slugSource: identity?.source ?? 'path',
+    await setScopeMapping(scopePrefix, {
+      projectId: project.id,
+      projectName: project.name,
+      slugSource: identity.source,
       verifiedAt: new Date().toISOString(),
     })
 
     if (json) {
-      writeJson(successEnvelope('repo set', { slug, togglProjectId: projectId }))
+      writeJson(
+        successEnvelope('repo init', {
+          slug: identity.slug,
+          prefix: scopePrefix,
+          projectId: project.id,
+          projectName: project.name,
+          created,
+        }),
+      )
     } else {
-      writeOut(`Mapped ${slug} to ${project?.name ?? projectId} (${projectId}).`)
+      writeOut(
+        created
+          ? `Created project ${project.id}: ${project.name}`
+          : `Using the existing project ${project.id}: ${project.name}`,
+      )
+      writeOut(`Scope   : ${scopePrefix}`)
+      if (scopePrefix !== identity.slug) {
+        writeOut('          Every repository under that prefix resolves to this project.')
+      }
+      writeOut('')
+      writeOut('Claude will now offer the timer in these repositories.')
+      writeOut(`To send its time to a Jira board: bita map set ${project.id} <JIRAKEY>`)
     }
     return 0
   }
 
-  if (subcommand === 'unset') {
-    const [rawSlug] = args.positionals
-    if (!rawSlug) throw new UsageError('Usage: toggl repo unset <slug>')
-
-    const identity = rawSlug === '.' ? await currentRepoIdentity() : null
-    const slug = rawSlug === '.' && identity ? identity.slug : rawSlug
-    const removed = await unsetRepoMapping(slug)
-
-    if (json) writeJson(successEnvelope('repo unset', { slug, removed }))
-    else writeOut(removed ? `Removed the mapping for ${slug}.` : `No mapping existed for ${slug}.`)
-    return 0
-  }
-
-  throw new UsageError(`Unknown repo subcommand "${subcommand}". Use show, list, set or unset.`)
+  throw new UsageError(`Unknown repo subcommand "${subcommand}". Use show or init; scopes live in "bita scope".`)
 }

@@ -1,15 +1,13 @@
 export interface EnrichedTimeEntry {
   id: number
+  externalId: number | null
   description: string
   projectId: number | null
   projectName: string | null
-  clientId: number | null
   clientName: string | null
-  workspaceId: number
-  taskId: number | null
-  tags: string[]
-  tagIds: number[]
   billable: boolean
+  registered: boolean
+  issueKey: string | null
   start: string
   stop: string | null
   startLocal: string
@@ -36,9 +34,7 @@ export interface TaskGroup {
   summary: string
   projectId: number | null
   projectName: string | null
-  clientId: number | null
   clientName: string | null
-  workspaceId: number
   billable: boolean
   totalSeconds: number
   totalHuman: string
@@ -62,6 +58,6 @@ export interface ExcludedEntry {
   localDay: string
   durationSeconds: number
   durationHuman: string
-  tags: string[]
+  registered: boolean
   reason: string
 }

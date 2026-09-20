@@ -4,7 +4,7 @@ import { appendFile, mkdtemp, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { appendNote, parseNoteInput, readNotesByEntryId, type EntryNote } from '../src/state/notes.ts'
-import { UsageError } from '../src/http/errors.ts'
+import { UsageError } from '../src/errors.ts'
 import { NOTE_BODY_MAX } from '../src/config/constants.ts'
 
 async function tempNotesPath(): Promise<string> {
@@ -14,7 +14,6 @@ async function tempNotesPath(): Promise<string> {
 
 const defaults = {
   entryId: 1,
-  workspaceId: 456,
   source: 'stop' as const,
   title: 'Live timer',
   recordedAt: '2026-09-19T22:00:00.000Z',

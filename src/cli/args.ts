@@ -1,8 +1,7 @@
 import { parseArgs, type ParseArgsConfig } from 'node:util'
-import { UsageError } from '../http/errors.ts'
+import { UsageError } from '../errors.ts'
 import { RANGE_PRESETS, type DateRangeInput, type RangePreset } from '../domain/date-range.ts'
-import type { TagMatchMode } from '../domain/filter.ts'
-import { PENDING_TAG, REGISTERED_TAG } from '../config/constants.ts'
+import type { RegistrationFilter } from '../domain/filter.ts'
 
 type OptionConfig = NonNullable<ParseArgsConfig['options']>
 
@@ -10,6 +9,7 @@ export const BASE_OPTIONS: OptionConfig = {
   json: { type: 'boolean', default: false },
   workspace: { type: 'string' },
   timezone: { type: 'string' },
+  'db-path': { type: 'string' },
   'no-cache': { type: 'boolean', default: false },
   offline: { type: 'boolean', default: false },
   verbose: { type: 'boolean', default: false },
@@ -23,13 +23,8 @@ export const RANGE_OPTIONS: OptionConfig = {
 }
 
 export const FILTER_OPTIONS: OptionConfig = {
-  tag: { type: 'string', multiple: true },
-  'exclude-tag': { type: 'string', multiple: true },
-  'tag-match': { type: 'string' },
   pending: { type: 'boolean', default: false },
   registered: { type: 'boolean', default: false },
-  untagged: { type: 'boolean', default: false },
-  source: { type: 'string' },
   'include-running': { type: 'boolean', default: false },
 }
 
@@ -122,25 +117,14 @@ export function hasExplicitRange(args: ParsedArgs): boolean {
   )
 }
 
-export function readTagFilter(args: ParsedArgs): {
-  include: string[]
-  exclude: string[]
-  mode: TagMatchMode
-  untaggedOnly: boolean
-} {
-  const include = [...readStringList(args, 'tag')]
-  if (readBoolean(args, 'pending')) include.push(PENDING_TAG)
-  if (readBoolean(args, 'registered')) include.push(REGISTERED_TAG)
+export function readRegistrationFilter(args: ParsedArgs): RegistrationFilter {
+  const pending = readBoolean(args, 'pending')
+  const registered = readBoolean(args, 'registered')
 
-  const rawMode = readString(args, 'tag-match') ?? 'any'
-  if (rawMode !== 'any' && rawMode !== 'all') {
-    throw new UsageError(`Invalid value for --tag-match: "${rawMode}". Expected "any" or "all".`)
+  if (pending && registered) {
+    throw new UsageError('--pending and --registered contradict each other; pass only one.')
   }
-
-  return {
-    include: [...new Set(include)],
-    exclude: readStringList(args, 'exclude-tag'),
-    mode: rawMode,
-    untaggedOnly: readBoolean(args, 'untagged'),
-  }
+  if (pending) return 'pending'
+  if (registered) return 'registered'
+  return 'any'
 }

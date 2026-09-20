@@ -1,58 +1,51 @@
-import type { WireTimeEntry } from '../toggl/wire-types.ts'
+import type { EntryWithProjectRow } from '../db/rows.ts'
 import type { EnrichedTimeEntry } from './types.ts'
-import type { Catalog } from '../toggl/catalog.ts'
-import { elapsedSeconds, formatDuration, toDecimalHours } from './duration.ts'
+import { formatDuration, toDecimalHours } from './duration.ts'
 import { localDay, toJiraStarted, toLocalIso } from './timezone.ts'
 
 export function normalizeDescription(value: string | null | undefined): string {
   return (value ?? '').trim().replace(/\s+/g, ' ')
 }
 
+export function elapsedSecondsOf(row: EntryWithProjectRow, now: Date): number {
+  const started = Date.parse(row.startedAt)
+  const ended = row.stoppedAt === null ? now.getTime() : Date.parse(row.stoppedAt)
+  return Math.max(0, Math.round((ended - started) / 1000))
+}
+
 export function enrichEntry(
-  entry: WireTimeEntry,
-  catalog: Catalog,
+  row: EntryWithProjectRow,
   timezone: string,
   now: Date,
 ): EnrichedTimeEntry {
-  const project = entry.project_id === null ? undefined : catalog.projects.get(entry.project_id)
-  const clientId = entry.client_id ?? project?.client_id ?? null
-  const client = clientId === null ? undefined : catalog.clients.get(clientId)
-  const running = entry.duration < 0 || entry.stop === null
-  const durationSeconds = elapsedSeconds(entry, now)
-  const tagIds = entry.tag_ids ?? []
-  const tags =
-    entry.tags ??
-    tagIds.map((id) => catalog.tagsById.get(id)?.name).filter((name): name is string => Boolean(name))
+  const durationSeconds = elapsedSecondsOf(row, now)
 
   return {
-    id: entry.id,
-    description: normalizeDescription(entry.description),
-    projectId: entry.project_id,
-    projectName: project?.name ?? null,
-    clientId,
-    clientName: client?.name ?? null,
-    workspaceId: entry.workspace_id,
-    taskId: entry.task_id,
-    tags,
-    tagIds,
-    billable: entry.billable,
-    start: entry.start,
-    stop: entry.stop,
-    startLocal: toLocalIso(entry.start, timezone),
-    localDay: localDay(entry.start, timezone),
+    id: row.id,
+    externalId: row.externalId,
+    description: normalizeDescription(row.description),
+    projectId: row.projectId,
+    projectName: row.projectName,
+    clientName: row.clientName,
+    billable: row.billable,
+    registered: row.registered,
+    issueKey: row.issueKey,
+    start: row.startedAt,
+    stop: row.stoppedAt,
+    startLocal: toLocalIso(row.startedAt, timezone),
+    localDay: localDay(row.startedAt, timezone),
     durationSeconds,
     durationHuman: formatDuration(durationSeconds),
     durationHours: toDecimalHours(durationSeconds),
-    startedJira: toJiraStarted(entry.start, timezone),
-    running,
+    startedJira: toJiraStarted(row.startedAt, timezone),
+    running: row.stoppedAt === null,
   }
 }
 
 export function enrichEntries(
-  entries: WireTimeEntry[],
-  catalog: Catalog,
+  rows: EntryWithProjectRow[],
   timezone: string,
   now: Date,
 ): EnrichedTimeEntry[] {
-  return entries.map((entry) => enrichEntry(entry, catalog, timezone, now))
+  return rows.map((row) => enrichEntry(row, timezone, now))
 }

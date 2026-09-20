@@ -11,9 +11,9 @@ export interface EntryOverrides {
   projectName?: string | null
   start?: string
   durationSeconds?: number
-  tags?: string[]
+  registered?: boolean
+  issueKey?: string | null
   running?: boolean
-  workspaceId?: number
 }
 
 export function makeEntry(overrides: EntryOverrides = {}): EnrichedTimeEntry {
@@ -23,16 +23,14 @@ export function makeEntry(overrides: EntryOverrides = {}): EnrichedTimeEntry {
 
   return {
     id: overrides.id ?? 1,
+    externalId: null,
     description: overrides.description ?? 'ajustar pipeline',
     projectId: overrides.projectId === undefined ? 789 : overrides.projectId,
     projectName: overrides.projectName === undefined ? 'Plataforma' : overrides.projectName,
-    clientId: null,
     clientName: null,
-    workspaceId: overrides.workspaceId ?? 456,
-    taskId: null,
-    tags: overrides.tags ?? ['pending'],
-    tagIds: [],
     billable: false,
+    registered: overrides.registered ?? false,
+    issueKey: overrides.issueKey ?? null,
     start,
     stop: overrides.running ? null : stop,
     startLocal: toLocalIso(start, TEST_TZ),

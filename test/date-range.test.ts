@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { resolveDateRange } from '../src/domain/date-range.ts'
-import { UsageError } from '../src/http/errors.ts'
+import { UsageError } from '../src/errors.ts'
 
 const TZ = 'America/Mazatlan'
 
