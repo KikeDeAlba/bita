@@ -16,7 +16,7 @@ interface RawEntry {
   updated_at: string
 }
 
-interface RawEntryWithProject extends RawEntry {
+export interface RawEntryWithProject extends RawEntry {
   project_name: string | null
   client_name: string | null
   registered: number
@@ -49,7 +49,7 @@ function toEntry(raw: RawEntry): EntryRow {
   }
 }
 
-function toEntryWithProject(raw: RawEntryWithProject): EntryWithProjectRow {
+export function toEntryWithProject(raw: RawEntryWithProject): EntryWithProjectRow {
   return {
     ...toEntry(raw),
     projectName: raw.project_name,
@@ -198,4 +198,12 @@ export function updateEntry(
 
 export function deleteEntry(db: DatabaseSync, id: number): boolean {
   return db.prepare('DELETE FROM entries WHERE id = ?').run(id).changes > 0
+}
+
+export function listEntriesForProject(db: DatabaseSync, projectId: number): EntryWithProjectRow[] {
+  const raws = queryAll<RawEntryWithProject>(
+    db.prepare(`${SELECT_WITH_PROJECT} WHERE e.project_id = ? ORDER BY e.started_at`),
+    projectId,
+  )
+  return raws.map(toEntryWithProject)
 }

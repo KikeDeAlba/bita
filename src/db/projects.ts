@@ -86,3 +86,7 @@ export function renameProject(db: DatabaseSync, id: number, name: string): void 
 export function setProjectActive(db: DatabaseSync, id: number, active: boolean): void {
   db.prepare('UPDATE projects SET active = ? WHERE id = ?').run(fromBoolean(active), id)
 }
+
+export function deleteProject(db: DatabaseSync, id: number): boolean {
+  return db.prepare('DELETE FROM projects WHERE id = ?').run(id).changes > 0
+}
