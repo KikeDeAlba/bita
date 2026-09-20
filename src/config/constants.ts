@@ -42,6 +42,9 @@ export const DOC_SECTIONS: readonly string[] = [
 
 export const DOC_SECTIONS_REQUIRED: readonly string[] = ['Contexto', 'Qué se hizo', 'Pendiente']
 
+export const DOC_LOCK_TIMEOUT_MS = 2_000
+export const DOC_LOCK_STALE_MS = 30_000
+
 export const CHECKPOINT_STALE_MINUTES = 45
 export const CHECKPOINT_TOUCH_THRESHOLD = 3
 
