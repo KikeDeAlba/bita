@@ -4,7 +4,7 @@ import { queryAll, queryOne } from './query.ts'
 
 interface RawJiraLink {
   entry_id: number
-  issue_key: string
+  issue_key: string | null
   worklog_id: string | null
   linked_at: string
 }
@@ -20,7 +20,7 @@ function toLink(raw: RawJiraLink): JiraLinkRow {
 
 export interface NewJiraLink {
   entryId: number
-  issueKey: string
+  issueKey: string | null
   worklogId?: string | null
   linkedAt: string
 }

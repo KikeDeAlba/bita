@@ -25,14 +25,23 @@ export interface EntryRow {
 export interface EntryWithProjectRow extends EntryRow {
   projectName: string | null
   clientName: string | null
+  registered: boolean
   issueKey: string | null
 }
 
 export interface JiraLinkRow {
   entryId: number
-  issueKey: string
+  issueKey: string | null
   worklogId: string | null
   linkedAt: string
+}
+
+export function toUtcIso(instant: string): string {
+  const parsed = new Date(instant)
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`not a valid instant: ${instant}`)
+  }
+  return parsed.toISOString()
 }
 
 export function toBoolean(value: unknown): boolean {

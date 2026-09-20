@@ -47,7 +47,7 @@ const INITIAL_SCHEMA: readonly string[] = [
 
   `CREATE TABLE jira_links (
      entry_id INTEGER PRIMARY KEY REFERENCES entries (id) ON DELETE CASCADE,
-     issue_key TEXT NOT NULL,
+     issue_key TEXT,
      worklog_id TEXT,
      linked_at TEXT NOT NULL
    )`,

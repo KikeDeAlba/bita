@@ -10,6 +10,7 @@ import { runConfig } from './commands/config.ts'
 import { runRepo } from './commands/repo.ts'
 import { runNote } from './commands/note.ts'
 import { runHook } from './commands/hook.ts'
+import { runImport } from './commands/import.ts'
 import { runCancel, runCurrent, runStart, runStop } from './commands/timer.ts'
 import { writeOut } from './output.ts'
 
@@ -36,6 +37,7 @@ Commands:
   cancel                     Discard the running timer
   note get|set <entryId>     Read or attach the rich note of an entry
   hook session-start         Emit the Claude Code SessionStart context
+  import toggl               Copy the Toggl projects and history into the local store
 
 Range presets:
   today, yesterday, week, last-week, month, last-month
@@ -80,6 +82,10 @@ Tag options:
   --yes                      Skip the interactive confirmation
   --no-verify                Skip the read-back verification
   --strategy patch|put       Bulk patch or one entry at a time
+
+Import options:
+  --dry-run                  Report what would be copied without writing
+  --db-path FILE             Write to this database instead of the default
 `
 
 export async function route(argv: string[]): Promise<number> {
@@ -126,6 +132,8 @@ export async function route(argv: string[]): Promise<number> {
       return runNote(rest)
     case 'hook':
       return runHook(rest)
+    case 'import':
+      return runImport(rest)
     case 'start':
       return runStart(rest)
     case 'stop':

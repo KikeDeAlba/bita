@@ -209,6 +209,55 @@ test('keeps imported project ids and still hands out small ids to new projects',
   db.close()
 })
 
+test('normalises every stored instant to utc so range comparisons stay textual', () => {
+  const db = openMemoryDatabase()
+  const entry = insertEntry(db, {
+    description: 'offset stamp',
+    projectId: null,
+    startedAt: '2026-09-19T08:34:44-07:00',
+    stoppedAt: '2026-09-19T09:34:44-07:00',
+    source: 'import',
+    now: NOW,
+  })
+
+  assert.equal(entry.startedAt, '2026-09-19T15:34:44.000Z')
+  assert.equal(entry.stoppedAt, '2026-09-19T16:34:44.000Z')
+
+  const sameDay = listEntriesStartedBetween(
+    db,
+    '2026-09-19T00:00:00.000Z',
+    '2026-09-20T00:00:00.000Z',
+  )
+  assert.deepEqual(
+    sameDay.map((row) => row.id),
+    [entry.id],
+  )
+
+  const beforeItStarted = listEntriesStartedBetween(
+    db,
+    '2026-09-19T00:00:00.000Z',
+    '2026-09-19T10:00:00.000Z',
+  )
+  assert.deepEqual(beforeItStarted, [])
+  db.close()
+})
+
+test('rejects an instant it cannot parse instead of storing it', () => {
+  const db = openMemoryDatabase()
+  assert.throws(
+    () =>
+      insertEntry(db, {
+        description: 'broken',
+        projectId: null,
+        startedAt: 'yesterday afternoon',
+        source: 'manual',
+        now: NOW,
+      }),
+    /not a valid instant/,
+  )
+  db.close()
+})
+
 test('refuses two projects whose names differ only in case', () => {
   const db = openMemoryDatabase()
   insertProject(db, { name: 'Pharma STI', createdAt: NOW })

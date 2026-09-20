@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { EntryRow, EntrySource, EntryWithProjectRow } from './rows.ts'
-import { fromBoolean, toBoolean } from './rows.ts'
+import { fromBoolean, toBoolean, toUtcIso } from './rows.ts'
 import { queryAll, queryOne } from './query.ts'
 
 interface RawEntry {
@@ -19,11 +19,16 @@ interface RawEntry {
 interface RawEntryWithProject extends RawEntry {
   project_name: string | null
   client_name: string | null
+  registered: number
   issue_key: string | null
 }
 
 const SELECT_WITH_PROJECT = `
-  SELECT e.*, p.name AS project_name, p.client_name AS client_name, j.issue_key AS issue_key
+  SELECT e.*,
+         p.name AS project_name,
+         p.client_name AS client_name,
+         j.entry_id IS NOT NULL AS registered,
+         j.issue_key AS issue_key
   FROM entries e
   LEFT JOIN projects p ON p.id = e.project_id
   LEFT JOIN jira_links j ON j.entry_id = e.id
@@ -49,6 +54,7 @@ function toEntryWithProject(raw: RawEntryWithProject): EntryWithProjectRow {
     ...toEntry(raw),
     projectName: raw.project_name,
     clientName: raw.client_name,
+    registered: toBoolean(raw.registered),
     issueKey: raw.issue_key,
   }
 }
@@ -74,13 +80,13 @@ export function insertEntry(db: DatabaseSync, entry: NewEntry): EntryRow {
     .run(
       entry.projectId,
       entry.description,
-      entry.startedAt,
-      entry.stoppedAt ?? null,
+      toUtcIso(entry.startedAt),
+      entry.stoppedAt == null ? null : toUtcIso(entry.stoppedAt),
       fromBoolean(entry.billable ?? false),
       entry.source,
       entry.externalId ?? null,
-      entry.now,
-      entry.now,
+      toUtcIso(entry.now),
+      toUtcIso(entry.now),
     )
   const created = findEntryById(db, Number(result.lastInsertRowid))
   if (!created) throw new Error('the entry vanished right after being inserted')
@@ -146,7 +152,7 @@ export function stopEntry(db: DatabaseSync, id: number, stoppedAt: string, now: 
     .prepare(
       'UPDATE entries SET stopped_at = ?, updated_at = ? WHERE id = ? AND stopped_at IS NULL',
     )
-    .run(stoppedAt, now, id)
+    .run(toUtcIso(stoppedAt), toUtcIso(now), id)
   return result.changes > 0
 }
 
@@ -168,15 +174,15 @@ export function updateEntry(
   }
   if (fields.startedAt !== undefined) {
     sets.push('started_at = ?')
-    values.push(fields.startedAt)
+    values.push(toUtcIso(fields.startedAt))
   }
   if (fields.stoppedAt !== undefined) {
     sets.push('stopped_at = ?')
-    values.push(fields.stoppedAt)
+    values.push(fields.stoppedAt === null ? null : toUtcIso(fields.stoppedAt))
   }
   if (sets.length === 0) return false
   sets.push('updated_at = ?')
-  values.push(now, id)
+  values.push(toUtcIso(now), id)
   const result = db.prepare(`UPDATE entries SET ${sets.join(', ')} WHERE id = ?`).run(...values)
   return result.changes > 0
 }
