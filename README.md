@@ -40,8 +40,8 @@ node -v    # debe decir v24 o más
 ### 1. Clonar e instalar
 
 ```sh
-git clone git@github.com:KikeDeAlba/bita.git
-cd bita
+git clone git@github.com:KikeDeAlba/bita-cli.git
+cd bita-cli
 pnpm install
 ```
 
@@ -106,7 +106,7 @@ que ya existe:
 
 ```sh
 bita project add "Mi proyecto"     # devuelve un id
-bita repo set . <projectId>
+bita scope set . <projectId>
 ```
 
 **Mientras un repositorio no esté mapeado, el hook no dice nada.** En cuanto lo
@@ -115,7 +115,7 @@ ofrecer el cronómetro cuando el trabajo vaya a dejar un artefacto —un commit,
 archivo, un despliegue— y callarse cuando solo vayas a leer o preguntar.
 
 El mapeo se guarda por el **slug** del repositorio, que sale del remoto de git
-(`github.com/kikedealba/bita`), así que sobrevive a que muevas la carpeta.
+(`github.com/kikedealba/bita-cli`), así que sobrevive a que muevas la carpeta.
 
 Reabre la sesión de Claude Code para que cargue el hook, la skill y los comandos.
 

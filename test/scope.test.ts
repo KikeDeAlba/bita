@@ -39,8 +39,8 @@ test('the longest matching prefix wins', () => {
 })
 
 test('a single repository still resolves, as the most specific prefix there is', () => {
-  const scopes = { 'github.com/kikedealba/bita': { projectId: 7 } }
-  assert.equal(resolveScopeForSlug('github.com/kikedealba/bita', scopes)?.scope.projectId, 7)
+  const scopes = { 'github.com/kikedealba/bita-cli': { projectId: 7 } }
+  assert.equal(resolveScopeForSlug('github.com/kikedealba/bita-cli', scopes)?.scope.projectId, 7)
 })
 
 test('an exception inside a group beats the group', () => {
