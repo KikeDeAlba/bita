@@ -1,5 +1,6 @@
 import { UsageError } from '../errors.ts'
 import { runProjects } from './commands/catalog.ts'
+import { runProject } from './commands/project.ts'
 import { runEntries } from './commands/entries.ts'
 import { runSummary } from './commands/summary.ts'
 import { runMap } from './commands/map.ts'
@@ -30,6 +31,7 @@ Reporting:
   entries [preset]           List time entries
   summary [preset]           Group entries into Jira-ready tasks
   projects                   List projects and their Jira mapping
+  project add "<name>"       Create a project (also rename, archive)
 
 Configuration:
   map list|set|unset|story   Map projects to Jira projects, parents and stories
@@ -69,6 +71,11 @@ Log options:
   --to HH:MM                 When it ended
   --for 1h30m                How long it lasted, instead of --to
 
+Project options:
+  --client NAME              Client the project belongs to
+  --activate                 With "project archive", bring it back instead
+  --all                      With "projects", include archived ones
+
 Link options:
   --issue KEY                The Jira issue the entries were written to
   --ids A,B,C                Entry ids, as an alternative to positionals
@@ -101,6 +108,8 @@ export async function route(argv: string[]): Promise<number> {
   switch (command) {
     case 'projects':
       return runProjects(rest)
+    case 'project':
+      return runProject(rest)
     case 'entries':
       return runEntries(rest)
     case 'summary':
