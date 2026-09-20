@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 import { route } from '../cli/router.ts'
-import { ConflictError, UsageError } from '../errors.ts'
+import { ConflictError, NotFoundError, UsageError } from '../errors.ts'
 import { EXIT_CONFLICT, EXIT_GENERIC, EXIT_USAGE } from '../cli/exit-codes.ts'
 import { errorEnvelope, writeErr, writeJson } from '../cli/output.ts'
 
 function exitCodeFor(error: unknown): number {
   if (error instanceof ConflictError) return EXIT_CONFLICT
-  if (error instanceof UsageError) return EXIT_USAGE
+  if (error instanceof UsageError || error instanceof NotFoundError) return EXIT_USAGE
   return EXIT_GENERIC
 }
 
@@ -24,7 +24,7 @@ async function main(): Promise<void> {
     process.exitCode = await route(argv)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    const hint = error instanceof ConflictError ? error.hint : undefined
+    const hint = error instanceof ConflictError || error instanceof NotFoundError ? error.hint : undefined
 
     if (wantsJson) {
       writeJson(

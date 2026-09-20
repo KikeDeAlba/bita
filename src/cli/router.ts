@@ -8,6 +8,7 @@ import { runConfig } from './commands/config.ts'
 import { runRepo } from './commands/repo.ts'
 import { runScope } from './commands/scope.ts'
 import { runAmend } from './commands/amend.ts'
+import { runDocs } from './commands/docs.ts'
 import { runNote } from './commands/note.ts'
 import { runNotes } from './commands/notes.ts'
 import { runHook } from './commands/hook.ts'
@@ -15,7 +16,7 @@ import { runLink } from './commands/link.ts'
 import { runCancel, runCurrent, runLog, runStart, runStop } from './commands/timer.ts'
 import { writeOut } from './output.ts'
 
-export const VERSION = '0.2.0'
+export const VERSION = '0.3.0'
 
 const HELP = `bita ${VERSION}
 
@@ -33,6 +34,12 @@ Tracking:
   note get|ls <id>           Read the document, or list the ones an entry has
   notes migrate              Turn the legacy NDJSON notes into documents
   link <ids...> --issue K    Mark entries as registered in a Jira issue
+
+Documents:
+  docs tree [--months]       Projects with their document and entry counts
+  docs ls [--project X]      Entries and their documents, newest first
+  docs show <id|--path P>    One document: markdown, front matter, sections
+  docs search "<text>"       Search every document, with snippets
 
 Reporting:
   entries [preset]           List time entries
@@ -150,6 +157,8 @@ export async function route(argv: string[]): Promise<number> {
       return runScope(rest)
     case 'amend':
       return runAmend(rest)
+    case 'docs':
+      return runDocs(rest)
     case 'note':
       return runNote(rest)
     case 'notes':

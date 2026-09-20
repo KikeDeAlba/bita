@@ -175,6 +175,33 @@ Confluence.
 Si vienes de las notas en NDJSON, `bita notes migrate --dry-run` enseña qué
 documentos se crearían, y sin el flag los crea. El archivo viejo no se toca.
 
+### Navegar lo escrito
+
+`bita note` siempre habla de una entrada concreta. Para moverse por el corpus
+—que es lo que necesita un lector, dentro o fuera de la terminal— está
+`bita docs`, que solo lee:
+
+```sh
+bita docs tree --months                      # proyectos, con sus meses y conteos
+bita docs ls --project ARSM                  # entradas y su documento, o «sin nota»
+bita docs show 735                           # markdown, front matter y secciones
+bita docs search "cognito" --project ARSM    # con fragmentos alrededor de cada acierto
+```
+
+`docs ls` devuelve **siempre las siete secciones** con su estado —`written`,
+`empty` o `absent`— para que quien pinte un índice no tenga que llevar su propia
+copia de la lista. Las entradas sin documento salen como filas con `doc: null`,
+porque no tener nota escrita también es información.
+
+Un archivo que falta o que cambió por fuera **no es un error**: sale en
+`meta.files` y en `meta.warnings` con `ok: true`. Que el documento vaya por
+delante de la base entre `note path --create` y `note save` es el flujo normal,
+no una avería.
+
+La búsqueda lee de disco, acotando antes por la base: el catálogo dice qué
+archivos existen y el archivo dice qué contiene. No hay índice que invalidar, y
+buscar dentro de un proyecto solo toca los documentos de ese proyecto.
+
 ### Formato de salida
 
 Todos los comandos aceptan `--json` y emiten un solo documento en stdout:

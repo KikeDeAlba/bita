@@ -121,6 +121,11 @@ export function findDocForEntry(
   return row ? toRow(row) : undefined
 }
 
+export function findDocByRelPath(db: DatabaseSync, relPath: string): EntryDocRow | undefined {
+  const row = queryOne<DocRow>(db.prepare(`SELECT ${COLUMNS} FROM entry_docs WHERE rel_path = ?`), relPath)
+  return row ? toRow(row) : undefined
+}
+
 export function listDocsForEntry(db: DatabaseSync, entryId: number): EntryDocRow[] {
   return queryAll<DocRow>(
     db.prepare(`SELECT ${COLUMNS} FROM entry_docs WHERE entry_id = ? ORDER BY kind, rel_path`),
