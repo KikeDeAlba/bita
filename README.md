@@ -84,6 +84,21 @@ Warning: 2026-09-19: 4h 8m tracked over 3h 7m of clock time (1h overlapping)
 
 No lo impide. Solo evita que pase inadvertido.
 
+## Los comandos de Claude Code
+
+`commands/` tiene cuatro slash commands, enlazados por symlink desde
+`~/.claude/commands/`:
+
+| Comando | Qué hace |
+|---|---|
+| `/bita-start [título]` | Arranca un cronómetro. Sin título, lo infiere de la sesión y lo enseña antes |
+| `/bita-stop [id]` | Escribe la nota de lo que se hizo y para. Con varios abiertos, pregunta cuál |
+| `/bita-timers` | Qué está corriendo y cuánto llevas hoy |
+| `/bita-log <texto>` | Registra un bloque que ya pasó, cuando se trabajó sin cronómetro |
+
+Viven en el repo por la misma razón que la skill: usan los flags del CLI, así que
+cambian en el mismo commit.
+
 ## La skill
 
 `skill/SKILL.md` es la skill de Claude Code que envuelve el CLI: decide cuándo
