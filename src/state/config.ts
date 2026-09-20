@@ -32,7 +32,7 @@ export interface ProjectMapping {
 
 export type RepoSlugSource = 'remote' | 'path' | 'basename'
 
-export interface RepoMapping {
+export interface ScopeMapping {
   projectId: number
   projectName: string
   workspaceId?: number
@@ -53,11 +53,11 @@ export interface AppConfig {
   jira?: JiraConfig
   defaults?: { issueTypeName?: string; pendingTagName?: string; storyThemes?: StoryTheme[] }
   projectMapping: Record<string, ProjectMapping>
-  repoMapping: Record<string, RepoMapping>
+  scopeMapping: Record<string, ScopeMapping>
 }
 
 export function emptyConfig(): AppConfig {
-  return { version: 1, projectMapping: {}, repoMapping: {} }
+  return { version: 1, projectMapping: {}, scopeMapping: {} }
 }
 
 export const LEGACY_CONFIG_PATH = path.join(
@@ -71,7 +71,7 @@ interface LegacyProjectMapping extends ProjectMapping {
   togglProjectName?: string
 }
 
-interface LegacyRepoMapping extends RepoMapping {
+interface LegacyScopeMapping extends ScopeMapping {
   togglProjectId?: number
   togglProjectName?: string
   workspaceId?: number
@@ -85,18 +85,22 @@ export function migrateLegacyKeys(parsed: Partial<AppConfig>): Partial<AppConfig
     projectMapping[key] = { ...rest, projectName: rest.projectName ?? togglProjectName ?? '' }
   }
 
-  const repoMapping: Record<string, RepoMapping> = {}
-  for (const [key, value] of Object.entries(parsed.repoMapping ?? {})) {
-    const legacy = value as LegacyRepoMapping
+  const legacyScopes = (parsed as { repoMapping?: Record<string, unknown> }).repoMapping
+  const scopeMapping: Record<string, ScopeMapping> = {}
+  for (const [key, value] of Object.entries(parsed.scopeMapping ?? legacyScopes ?? {})) {
+    const legacy = value as LegacyScopeMapping
     const { togglProjectId, togglProjectName, workspaceId, ...rest } = legacy
-    repoMapping[key] = {
+    scopeMapping[key] = {
       ...rest,
       projectId: rest.projectId ?? togglProjectId ?? 0,
       projectName: rest.projectName ?? togglProjectName ?? '',
     }
   }
 
-  return { ...parsed, projectMapping, repoMapping }
+  const { repoMapping: _dropped, ...withoutLegacy } = parsed as Partial<AppConfig> & {
+    repoMapping?: unknown
+  }
+  return { ...withoutLegacy, projectMapping, scopeMapping }
 }
 
 export async function readConfig(configPath = CONFIG_PATH): Promise<AppConfig> {
@@ -115,7 +119,7 @@ export async function readConfig(configPath = CONFIG_PATH): Promise<AppConfig> {
       ...(parsed.jira !== undefined ? { jira: parsed.jira } : {}),
       ...(parsed.defaults !== undefined ? { defaults: parsed.defaults } : {}),
       projectMapping: parsed.projectMapping ?? {},
-      repoMapping: parsed.repoMapping ?? {},
+      scopeMapping: parsed.scopeMapping ?? {},
     }
   } catch {
     return emptyConfig()
@@ -150,21 +154,21 @@ export async function unsetProjectMapping(
   return true
 }
 
-export async function setRepoMapping(
+export async function setScopeMapping(
   slug: string,
-  mapping: RepoMapping,
+  mapping: ScopeMapping,
   configPath = CONFIG_PATH,
 ): Promise<AppConfig> {
   const config = await readConfig(configPath)
-  config.repoMapping[slug] = mapping
+  config.scopeMapping[slug] = mapping
   await writeConfig(config, configPath)
   return config
 }
 
-export async function unsetRepoMapping(slug: string, configPath = CONFIG_PATH): Promise<boolean> {
+export async function unsetScopeMapping(slug: string, configPath = CONFIG_PATH): Promise<boolean> {
   const config = await readConfig(configPath)
-  if (!(slug in config.repoMapping)) return false
-  delete config.repoMapping[slug]
+  if (!(slug in config.scopeMapping)) return false
+  delete config.scopeMapping[slug]
   await writeConfig(config, configPath)
   return true
 }

@@ -155,6 +155,52 @@ Todos los comandos aceptan `--json` y emiten un solo documento en stdout:
 Los errores salen con `ok: false` y un `error.code` estable. Los avisos van a
 stderr, nunca a stdout, para que el JSON se pueda parsear tal cual.
 
+## Contadores en blanco
+
+El caso normal es arrancar el reloj **antes de saber en qué se trabaja**:
+
+```sh
+cd ~/dev && bita start        # sin título y sin proyecto
+```
+
+Eso crea un borrador. Mientras siga sin título queda fuera de `summary`, así que
+no puede llegar a Jira por accidente. Se rellena después, y en buena parte solo:
+
+| Qué | Quién lo pone |
+|---|---|
+| Título y descripción | Claude, en cuanto un mensaje dice en qué se va a trabajar |
+| Proyecto | Claude por el prompt, o el hook por el primer archivo que se cambia |
+| Archivos tocados | El hook, en cada edición |
+
+El hook `UserPromptSubmit` recuerda que hay un contador sin nombre y se calla
+solo en cuanto lo tiene. A mano:
+
+```sh
+bita amend --draft --title "Lo que sea" --project Apartados
+```
+
+## Proyectos y repositorios
+
+**Un repo no es un proyecto.** Los proyectos suelen ser grupos con varios repos
+dentro, y el grupo no tiene `.git`: lo tienen los repos.
+
+El mapeo va por **prefijo de ruta**, y gana el más largo que empate:
+
+```sh
+bita scope set gitlab.com/vivaaerobus/vb_solemti/apartados 42
+bita scope which .        # que prefijo empata aqui
+bita scope list
+```
+
+Con eso, `apartados/api`, `apartados/front` y `apartados/workers` resuelven los
+tres a Apartados sin configurar nada mas. Se puede mapear un grupo y luego
+excepcionar un repo dentro, porque el prefijo mas largo manda. El empate es por
+segmentos, asi que `.../apartados` nunca cubre `.../apartados-legacy`.
+
+Si no hay prefijo, `bita repo init` propone uno comparando los segmentos de la
+ruta con los nombres de proyecto que ya existen, ignorando mayusculas, guiones y
+guiones bajos. Solo empata si tras normalizar son identicos.
+
 ## Cómo se agrupa
 
 Un grupo es **proyecto + título**, a lo largo de todo el rango, y se convierte en
@@ -177,7 +223,7 @@ No lo impide. Solo evita que pase inadvertido.
 
 ## Los comandos de Claude Code
 
-`commands/` tiene cinco slash commands, enlazados por symlink desde
+`commands/` tiene seis slash commands, enlazados por symlink desde
 `~/.claude/commands/`:
 
 | Comando | Qué hace |
@@ -187,6 +233,7 @@ No lo impide. Solo evita que pase inadvertido.
 | `/bita-timers` | Qué está corriendo y cuánto llevas hoy |
 | `/bita-log <texto>` | Registra un bloque que ya pasó, cuando se trabajó sin cronómetro |
 | `/bita-init [ruta]` | Da de alta un repositorio: crea su proyecto, lo mapea y revisa el tablero |
+| `/bita-amend [id]` | Rellena a mano el título, el proyecto o la nota de un cronómetro |
 
 Viven en el repo por la misma razón que la skill: usan los flags del CLI, así que
 cambian en el mismo commit.

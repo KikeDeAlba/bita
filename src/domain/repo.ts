@@ -72,3 +72,66 @@ export function resolveRepoIdentity(input: RepoIdentityInput): RepoIdentity | nu
 
   return { slug: `local/${name}`, source: 'basename', name, ...extras }
 }
+
+export function normalizeProjectName(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[\s_-]+/g, '')
+}
+
+export function coversSlug(prefix: string, slug: string): boolean {
+  return slug === prefix || slug.startsWith(`${prefix}/`)
+}
+
+export interface ScopeMatch<T> {
+  prefix: string
+  scope: T
+}
+
+export function resolveScopeForSlug<T>(
+  slug: string,
+  scopes: Record<string, T>,
+): ScopeMatch<T> | null {
+  let best: ScopeMatch<T> | null = null
+
+  for (const [prefix, scope] of Object.entries(scopes)) {
+    if (!coversSlug(prefix, slug)) continue
+    if (best === null || prefix.length > best.prefix.length) best = { prefix, scope }
+  }
+
+  return best
+}
+
+export interface NamedProject {
+  id: number
+  name: string
+}
+
+export interface ProjectSuggestion {
+  project: NamedProject
+  prefix: string
+  segment: string
+}
+
+export function suggestProjectForSlug(
+  slug: string,
+  projects: readonly NamedProject[],
+): ProjectSuggestion | null {
+  const segments = slug.split('/').filter((segment) => segment.length > 0)
+
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const segment = segments[index]
+    if (segment === undefined) continue
+    const normalized = normalizeProjectName(segment)
+    if (normalized.length === 0) continue
+
+    const project = projects.find((candidate) => normalizeProjectName(candidate.name) === normalized)
+    if (project) {
+      return { project, prefix: segments.slice(0, index + 1).join('/'), segment }
+    }
+  }
+
+  return null
+}

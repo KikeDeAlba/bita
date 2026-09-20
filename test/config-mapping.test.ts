@@ -6,9 +6,9 @@ import path from 'node:path'
 import {
   readConfig,
   setProjectMapping,
-  setRepoMapping,
+  setScopeMapping,
   unsetProjectMapping,
-  unsetRepoMapping,
+  unsetScopeMapping,
 } from '../src/state/config.ts'
 
 async function tempConfigPath(): Promise<string> {
@@ -91,7 +91,7 @@ test('the config file is written with owner-only permissions', async () => {
 test('remembers which toggl project a repository belongs to', async () => {
   const configPath = await tempConfigPath()
 
-  await setRepoMapping(
+  await setScopeMapping(
     'personal/toggl-track-cli',
     { projectId: 222494997, projectName: 'Pharma STI', slugSource: 'path' },
     configPath,
@@ -99,14 +99,14 @@ test('remembers which toggl project a repository belongs to', async () => {
 
   const config = await readConfig(configPath)
 
-  assert.equal(config.repoMapping['personal/toggl-track-cli']?.projectId, 222494997)
-  assert.equal(config.repoMapping['personal/toggl-track-cli']?.slugSource, 'path')
+  assert.equal(config.scopeMapping['personal/toggl-track-cli']?.projectId, 222494997)
+  assert.equal(config.scopeMapping['personal/toggl-track-cli']?.slugSource, 'path')
 })
 
 test('keeps the repo mapping when another command rewrites the config', async () => {
   const configPath = await tempConfigPath()
 
-  await setRepoMapping(
+  await setScopeMapping(
     'git.solemti.net/innovacion/budget',
     { projectId: 1, projectName: 'Innovacion', slugSource: 'remote' },
     configPath,
@@ -119,21 +119,21 @@ test('keeps the repo mapping when another command rewrites the config', async ()
 
   const config = await readConfig(configPath)
 
-  assert.equal(config.repoMapping['git.solemti.net/innovacion/budget']?.projectId, 1)
+  assert.equal(config.scopeMapping['git.solemti.net/innovacion/budget']?.projectId, 1)
   assert.equal(config.projectMapping['99']?.jiraProjectKey, 'INN')
 })
 
 test('unsetting one repository leaves the others alone', async () => {
   const configPath = await tempConfigPath()
 
-  await setRepoMapping('a/one', { projectId: 1, projectName: 'One', slugSource: 'path' }, configPath)
-  await setRepoMapping('a/two', { projectId: 2, projectName: 'Two', slugSource: 'path' }, configPath)
+  await setScopeMapping('a/one', { projectId: 1, projectName: 'One', slugSource: 'path' }, configPath)
+  await setScopeMapping('a/two', { projectId: 2, projectName: 'Two', slugSource: 'path' }, configPath)
 
-  assert.equal(await unsetRepoMapping('a/one', configPath), true)
-  assert.equal(await unsetRepoMapping('a/nope', configPath), false)
+  assert.equal(await unsetScopeMapping('a/one', configPath), true)
+  assert.equal(await unsetScopeMapping('a/nope', configPath), false)
 
   const config = await readConfig(configPath)
 
-  assert.equal(config.repoMapping['a/one'], undefined)
-  assert.equal(config.repoMapping['a/two']?.projectId, 2)
+  assert.equal(config.scopeMapping['a/one'], undefined)
+  assert.equal(config.scopeMapping['a/two']?.projectId, 2)
 })

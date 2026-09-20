@@ -113,6 +113,10 @@ export function listRunning(db: DatabaseSync): EntryWithProjectRow[] {
   return raws.map(toEntryWithProject)
 }
 
+export function listRunningDrafts(db: DatabaseSync): EntryWithProjectRow[] {
+  return listRunning(db).filter((entry) => entry.description.trim().length === 0)
+}
+
 export function countRunning(db: DatabaseSync): number {
   const row = queryOne<{ total: number }>(
     db.prepare('SELECT COUNT(*) AS total FROM entries WHERE stopped_at IS NULL'),

@@ -6,6 +6,8 @@ import { runSummary } from './commands/summary.ts'
 import { runMap } from './commands/map.ts'
 import { runConfig } from './commands/config.ts'
 import { runRepo } from './commands/repo.ts'
+import { runScope } from './commands/scope.ts'
+import { runAmend } from './commands/amend.ts'
 import { runNote } from './commands/note.ts'
 import { runHook } from './commands/hook.ts'
 import { runLink } from './commands/link.ts'
@@ -19,11 +21,12 @@ const HELP = `bita ${VERSION}
 Usage: bita <command> [options]
 
 Tracking:
-  start "<title>"            Start a timer; several may run at once
+  start ["<title>"]          Start a timer, blank or titled; several may run at once
   ls                         Show every running timer
   stop [id]                  Stop one timer (--last, --all, or pick when ambiguous)
   cancel [id]                Discard a running timer without recording it
   log "<title>"              Record a block that already happened
+  amend <id|--draft>         Fill in the title, project or note of an entry
   note get|set <entryId>     Read or attach the rich note of an entry
   link <ids...> --issue K    Mark entries as registered in a Jira issue
 
@@ -36,7 +39,8 @@ Reporting:
 Configuration:
   map list|set|unset|story   Map projects to Jira projects, parents and stories
   repo init [path]           Create a project for a repository and map it
-  repo show|list|set|unset   Inspect or change the mapping by hand
+  repo show                  Where am I, and which project resolves here
+  scope list|set|unset|which Map a path prefix to a project; the longest one wins
   config get|set-jira        Inspect or set the local configuration
   hook session-start         Emit the Claude Code SessionStart context
 
@@ -77,6 +81,12 @@ Project options:
   --client NAME              Client the project belongs to
   --activate                 With "project archive", bring it back instead
   --all                      With "projects", include archived ones
+
+Amend options:
+  --draft                    Target the single running draft
+  --title "..."              Set the title
+  --project ID|NAME          Set the project
+  --note-json FILE           Attach a rich note
 
 Link options:
   --issue KEY                The Jira issue the entries were written to
@@ -123,6 +133,10 @@ export async function route(argv: string[]): Promise<number> {
       return runConfig(rest)
     case 'repo':
       return runRepo(rest)
+    case 'scope':
+      return runScope(rest)
+    case 'amend':
+      return runAmend(rest)
     case 'note':
       return runNote(rest)
     case 'hook':
