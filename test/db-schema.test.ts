@@ -1,0 +1,71 @@
+import { strict as assert } from 'node:assert'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test } from 'node:test'
+import { LATEST_VERSION } from '../src/db/schema.ts'
+import { migrate, openDatabase, openMemoryDatabase, readSchemaVersion } from '../src/db/open.ts'
+import { DB_PATH_ENV_VAR, databasePath } from '../src/db/paths.ts'
+
+test('brings a fresh database up to the latest schema version', () => {
+  const db = openMemoryDatabase()
+  assert.equal(readSchemaVersion(db), LATEST_VERSION)
+  db.close()
+})
+
+test('applies migrations only once', () => {
+  const db = openMemoryDatabase()
+  const before = readSchemaVersion(db)
+  assert.equal(migrate(db), before)
+  db.close()
+})
+
+test('refuses a database written by a newer build', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'bita-schema-'))
+  const path = join(dir, 'bita.db')
+  const db = openDatabase(path)
+  db.exec(`PRAGMA user_version = ${LATEST_VERSION + 9}`)
+  db.close()
+
+  assert.throws(() => openDatabase(path), /newer version/)
+  rmSync(dir, { recursive: true, force: true })
+})
+
+test('enforces foreign keys so a link cannot outlive its entry', () => {
+  const db = openMemoryDatabase()
+  assert.throws(
+    () =>
+      db
+        .prepare('INSERT INTO jira_links (entry_id, issue_key, linked_at) VALUES (?, ?, ?)')
+        .run(999, 'DD-1', '2026-09-19T00:00:00.000Z'),
+    /FOREIGN KEY/i,
+  )
+  db.close()
+})
+
+test('rejects an entry that stops before it starts', () => {
+  const db = openMemoryDatabase()
+  assert.throws(
+    () =>
+      db
+        .prepare(
+          `INSERT INTO entries (description, started_at, stopped_at, source, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          'backwards',
+          '2026-09-19T10:00:00.000Z',
+          '2026-09-19T09:00:00.000Z',
+          'manual',
+          '2026-09-19T10:00:00.000Z',
+          '2026-09-19T10:00:00.000Z',
+        ),
+    /CHECK/i,
+  )
+  db.close()
+})
+
+test('reads the database location from the environment', () => {
+  assert.equal(databasePath({ [DB_PATH_ENV_VAR]: '/tmp/custom.db' }), '/tmp/custom.db')
+  assert.equal(databasePath({ XDG_DATA_HOME: '/data' }), '/data/bita/bita.db')
+})
