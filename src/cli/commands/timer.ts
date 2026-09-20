@@ -30,8 +30,9 @@ import type { NoteSource } from '../../state/notes.ts'
 import { findEntryWithProject } from '../../db/entries.ts'
 import { recordEntryDoc } from '../../docs/record.ts'
 import { recordTouch } from '../../db/touches.ts'
-import { checkpointStatus, findDocForEntry, type CheckpointStatus } from '../../db/docs.ts'
+import { checkpointStatus, findDocForEntry, listDocsForEntry, type CheckpointStatus } from '../../db/docs.ts'
 import { resolveDocPath } from '../../docs/paths.ts'
+import { removeDocument } from '../../docs/store.ts'
 import { readConfig, setScopeMapping } from '../../state/config.ts'
 import { currentRepoIdentity } from './repo.ts'
 import { resolveMappedProject } from '../resolve-project.ts'
@@ -457,18 +458,28 @@ export async function runCancel(argv: string[]): Promise<number> {
     }
 
     const targets = await chooseTargets(ctx, args, running, json)
+    const docPaths: string[] = []
     const discarded = targets.map((target) => {
       const snapshot = enrich(ctx, target)
+      for (const doc of listDocsForEntry(ctx.db, target.id)) {
+        docPaths.push(resolveDocPath(ctx.docsRoot, doc.relPath))
+      }
       deleteEntry(ctx.db, target.id)
       return snapshot
     })
 
+    const docsRemoved: string[] = []
+    for (const path of docPaths) {
+      if (await removeDocument(path)) docsRemoved.push(path)
+    }
+
     if (json) {
-      writeJson(successEnvelope('cancel', discarded, { discarded: discarded.length }))
+      writeJson(successEnvelope('cancel', discarded, { discarded: discarded.length, docsRemoved }))
     } else {
       for (const entry of discarded) {
         writeOut(`Discarded #${entry.id}: ${entry.description} (${entry.durationHuman} lost)`)
       }
+      for (const path of docsRemoved) writeOut(`  Document removed: ${path}`)
     }
     return 0
   } finally {

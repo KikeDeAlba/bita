@@ -141,10 +141,35 @@ bita stop 12                                 # para uno y cierra su documento
 bita log "Sesión con QA" --from 14:00 --for 1h
 bita summary --pending --json                # agrupado y listo para Jira
 bita link 12 13 --issue DD-1896              # marca como registradas
+bita delete 12 --dry-run                     # qué se llevaría por delante
 bita repo init ~/dev/otro/repo               # da de alta otro repositorio
 ```
 
 `bita --help` lista todo.
+
+### Borrar
+
+`bita delete <ids...>` quita entradas que nunca debieron registrarse: el
+contador que arrancó solo, el bloque de tres segundos, la prueba. Se lleva
+consigo el enlace a Jira, los archivos tocados, la fila del documento y el
+**archivo del documento en disco**, salvo con `--keep-doc`.
+
+Hay tres guardas, y todas paran la corrida entera antes de tocar nada:
+
+| Situación | Qué pasa |
+|---|---|
+| La entrada sigue corriendo | Se niega y remite a `bita cancel`, que es el comando de descartar un cronómetro vivo |
+| La entrada ya llegó a Jira | Se niega: el worklog sigue allá y el conector no puede borrarlo. `--force` borra la entrada local de todos modos |
+| El id no existe | Se niega antes de borrar ninguno de los otros |
+
+Sin terminal —o con `--json`— exige `--yes`, porque no hay a quién preguntarle.
+`--dry-run` describe lo que pasaría, incluido que se negaría, y no escribe nada.
+
+`bita project delete <id|nombre>` hace lo propio con un proyecto: borra su mapeo
+de Jira, sus Historias cacheadas y los prefijos de `scope` que apuntaban a él.
+Se niega si el proyecto tiene entradas, porque borrarlo las deja sin proyecto en
+vez de borrarlas; `--force` acepta ese resultado y `bita project archive` es la
+alternativa cuando el histórico importa.
 
 ### Los documentos
 

@@ -8,6 +8,7 @@ import { runConfig } from './commands/config.ts'
 import { runRepo } from './commands/repo.ts'
 import { runScope } from './commands/scope.ts'
 import { runAmend } from './commands/amend.ts'
+import { runDelete } from './commands/delete.ts'
 import { runDocs } from './commands/docs.ts'
 import { runNote } from './commands/note.ts'
 import { runNotes } from './commands/notes.ts'
@@ -29,6 +30,7 @@ Tracking:
   cancel [id]                Discard a running timer without recording it
   log "<title>"              Record a block that already happened
   amend <id|--draft>         Fill in the title, project or document of an entry
+  delete <ids...>            Remove entries that should never have been recorded
   note path <id> --create    Where the entry's document lives, creating it
   note save <id>             Record the document after editing it
   note get|ls <id>           Read the document, or list the ones an entry has
@@ -45,7 +47,7 @@ Reporting:
   entries [preset]           List time entries
   summary [preset]           Group entries into Jira-ready tasks
   projects                   List projects and their Jira mapping
-  project add "<name>"       Create a project (also rename, archive)
+  project add "<name>"       Create a project (also rename, archive, delete)
 
 Configuration:
   map list|set|unset|story   Map projects to Jira projects, parents and stories
@@ -95,6 +97,8 @@ Project options:
   --client NAME              Client the project belongs to
   --activate                 With "project archive", bring it back instead
   --all                      With "projects", include archived ones
+  --force                    With "project delete", accept leaving its entries orphaned
+  --yes / --dry-run          With "project delete", as in delete
 
 Amend options:
   --draft                    Target the single running draft
@@ -106,6 +110,13 @@ Link options:
   --issue KEY                The Jira issue the entries were written to
   --ids A,B,C                Entry ids, as an alternative to positionals
   --unlink                   Undo the link, putting the entries back to pending
+
+Delete options:
+  --ids A,B,C                Entry ids, as an alternative to positionals
+  --dry-run                  Show what would go without deleting anything
+  --yes                      Skip the confirmation (required without a terminal)
+  --keep-doc                 Leave the documents on disk
+  --force                    Delete even entries already registered in Jira
 
 Note options:
   --create                   With "note path", write the skeleton if there is none
@@ -157,6 +168,9 @@ export async function route(argv: string[]): Promise<number> {
       return runScope(rest)
     case 'amend':
       return runAmend(rest)
+    case 'delete':
+    case 'rm':
+      return runDelete(rest)
     case 'docs':
       return runDocs(rest)
     case 'note':
