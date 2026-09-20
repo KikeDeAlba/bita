@@ -21,7 +21,7 @@ const HELP = `bita ${VERSION}
 Usage: bita <command> [options]
 
 Tracking:
-  start "<title>"            Start a timer; several may run at once
+  start ["<title>"]          Start a timer, blank or titled; several may run at once
   ls                         Show every running timer
   stop [id]                  Stop one timer (--last, --all, or pick when ambiguous)
   cancel [id]                Discard a running timer without recording it

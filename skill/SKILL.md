@@ -20,6 +20,48 @@ description: >-
 El registro local de bita es la fuente de la verdad. Nada de estimar desde
 commits: las horas son las medidas.
 
+## El contador arranca antes de saber nada
+
+El flujo normal es: abrir Claude sobre `~/dev`, **arrancar el contador en blanco**
+con `/bita-start`, y solo entonces escribir el encargo. Planear es trabajo y el
+reloj ya está corriendo mientras se planea.
+
+Eso significa que **el contador nace sin título y sin proyecto**, y que rellenarlo
+es tarea tuya:
+
+1. El hook `prompt-submit` te avisa en cada turno mientras siga sin título.
+2. **En cuanto un mensaje diga en qué se va a trabajar, rellénalo — antes de
+   explorar y antes de planear.** No esperes al final.
+
+   ```
+   bita amend --draft --title "<titulo corto>" --project <nombre o id>
+   ```
+3. Al terminar el plan, enriquece la descripción con lo que concluyó:
+   `bita amend --draft --note-json <archivo>`.
+
+El título es la clave de agrupación y el summary del issue, así que corto y
+reconocible. Un borrador sin título queda fuera de `summary`, o sea que si no lo
+rellenas, esas horas no llegan a Jira.
+
+## Un repo no es un proyecto
+
+Los proyectos son **grupos con varios repos dentro**, y el grupo no tiene `.git`:
+lo tienen los repos.
+
+```
+gitlab.com/vivaaerobus/vb_solemti/apartados/api      ─┐
+gitlab.com/vivaaerobus/vb_solemti/apartados/front    ─┤  todos son "Apartados"
+gitlab.com/vivaaerobus/vb_solemti/apartados/workers  ─┘
+```
+
+El mapeo va por **prefijo de ruta**, y gana el más largo que empate. `bita repo
+show` dice qué prefijo empató, que es como se depura esto. `bita scope list` los
+lista todos.
+
+Si no hay prefijo, se propone por nombre de segmento. **Enseña siempre el prefijo
+que se va a guardar antes de confirmarlo**: empatar un segmento ancho como
+`vivaaerobus` guardaría un prefijo que se traga toda la organización.
+
 ## Convención del usuario
 
 Cada entrada lleva **título y proyecto**. El estado no es una etiqueta: una
@@ -352,7 +394,8 @@ sesión. **Nunca arranques sin un sí explícito.**
 ### Arrancar
 
 ```
-bita start "<título corto>"
+bita start                    # en blanco, al principio de la sesion
+bita start "<título corto>"   # o con titulo, si ya se sabe
 ```
 
 El título es la clave de agrupación y el summary del issue: corto y reconocible.
