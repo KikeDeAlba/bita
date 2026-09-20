@@ -1,6 +1,7 @@
 import { UsageError } from '../../errors.ts'
 import { parseCommandArgs, readBoolean, readString } from '../args.ts'
 import { withLocalContext } from '../local-context.ts'
+import { runProjectDelete } from './delete.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
 import {
   findProjectById,
@@ -13,6 +14,9 @@ import {
 const OPTIONS = {
   client: { type: 'string' as const },
   activate: { type: 'boolean' as const, default: false },
+  force: { type: 'boolean' as const, default: false },
+  yes: { type: 'boolean' as const, default: false },
+  'dry-run': { type: 'boolean' as const, default: false },
 }
 
 function requireProjectId(raw: string | undefined): number {
@@ -23,10 +27,14 @@ function requireProjectId(raw: string | undefined): number {
   return id
 }
 
-export function runProject(argv: string[]): number {
+export async function runProject(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, OPTIONS)
   const [subcommand, ...rest] = args.positionals
   const json = readBoolean(args, 'json')
+
+  if (subcommand === 'delete' || subcommand === 'rm') {
+    return runProjectDelete(args, rest)
+  }
 
   if (subcommand === 'add') {
     const name = rest.join(' ').trim()
@@ -92,5 +100,7 @@ export function runProject(argv: string[]): number {
     })
   }
 
-  throw new UsageError('Usage: bita project add|rename|archive. To list them, run "bita projects".')
+  throw new UsageError(
+    'Usage: bita project add|rename|archive|delete. To list them, run "bita projects".',
+  )
 }
