@@ -93,7 +93,7 @@ node "$REPO_ROOT/scripts/merge-settings.mjs" "$SETTINGS"
 echo
 echo "Done. Open a new session, then:"
 echo "  bita project add \"<name>\"     create a project"
-echo "  bita repo set . <projectId>   map this repository to it"
+echo "  bita scope set . <projectId>  map this repository to it"
 echo
 echo "Once a repository is mapped, the SessionStart hook tells Claude to offer"
 echo "the timer when work that leaves an artifact begins."

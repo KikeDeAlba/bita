@@ -98,6 +98,11 @@ export function findEntryById(db: DatabaseSync, id: number): EntryRow | undefine
   return raw ? toEntry(raw) : undefined
 }
 
+export function findEntryWithProject(db: DatabaseSync, id: number): EntryWithProjectRow | undefined {
+  const raw = queryOne<RawEntryWithProject>(db.prepare(`${SELECT_WITH_PROJECT} WHERE e.id = ?`), id)
+  return raw ? toEntryWithProject(raw) : undefined
+}
+
 export function findEntryByExternalId(db: DatabaseSync, externalId: number): EntryRow | undefined {
   const raw = queryOne<RawEntry>(
     db.prepare('SELECT * FROM entries WHERE external_id = ?'),

@@ -40,8 +40,8 @@ node -v    # debe decir v24 o más
 ### 1. Clonar e instalar
 
 ```sh
-git clone git@github.com:KikeDeAlba/bita.git
-cd bita
+git clone git@github.com:KikeDeAlba/bita-cli.git
+cd bita-cli
 pnpm install
 ```
 
@@ -106,7 +106,7 @@ que ya existe:
 
 ```sh
 bita project add "Mi proyecto"     # devuelve un id
-bita repo set . <projectId>
+bita scope set . <projectId>
 ```
 
 **Mientras un repositorio no esté mapeado, el hook no dice nada.** En cuanto lo
@@ -115,7 +115,7 @@ ofrecer el cronómetro cuando el trabajo vaya a dejar un artefacto —un commit,
 archivo, un despliegue— y callarse cuando solo vayas a leer o preguntar.
 
 El mapeo se guarda por el **slug** del repositorio, que sale del remoto de git
-(`github.com/kikedealba/bita`), así que sobrevive a que muevas la carpeta.
+(`github.com/kikedealba/bita-cli`), así que sobrevive a que muevas la carpeta.
 
 Reabre la sesión de Claude Code para que cargue el hook, la skill y los comandos.
 
@@ -135,7 +135,9 @@ bita map list
 ```sh
 bita start "Despliegue de infraestructura"   # arranca; puede haber varios
 bita ls                                      # qué está corriendo ahora
-bita stop 12 --note-json /tmp/nota.json      # para uno y le adjunta la nota
+bita note path 12 --create                   # el documento de la entrada
+bita note save 12                            # regístralo tras editarlo
+bita stop 12                                 # para uno y cierra su documento
 bita log "Sesión con QA" --from 14:00 --for 1h
 bita summary --pending --json                # agrupado y listo para Jira
 bita link 12 13 --issue DD-1896              # marca como registradas
@@ -143,6 +145,35 @@ bita repo init ~/dev/otro/repo               # da de alta otro repositorio
 ```
 
 `bita --help` lista todo.
+
+### Los documentos
+
+Cada entrada tiene un documento en markdown que se escribe **mientras el
+cronómetro corre**, no al pararlo. Viven en espejo del proyecto:
+
+```
+~/.local/share/bita/
+├── bita.db
+└── docs/
+    └── apartados/2026/09/20-128-migracion-del-worker.md
+```
+
+La raíz sale de `--docs-dir`, de `BITA_DOCS_DIR`, o del directorio de la base de
+datos, en ese orden. Como se deriva de la base, apuntar `--db-path` a un archivo
+de pruebas arrastra los documentos con él.
+
+**La base guarda la ruta, no el texto.** El archivo es el original: se puede
+abrir en un editor, indexar o respaldar sin pasar por el CLI, y el árbol entero
+se puede mover sin reescribir nada. Lo que sí guarda la base es el checksum, con
+lo que se nota si un documento cambió por fuera.
+
+Las secciones son fijas —Contexto, Qué se hizo, Decisiones, Hallazgos,
+Verificación, Pendiente, Tocado— porque son la superficie sobre la que se
+construye la descripción del issue de Jira y, más adelante, una página de
+Confluence.
+
+Si vienes de las notas en NDJSON, `bita notes migrate --dry-run` enseña qué
+documentos se crearían, y sin el flag los crea. El archivo viejo no se toca.
 
 ### Formato de salida
 
@@ -223,17 +254,18 @@ No lo impide. Solo evita que pase inadvertido.
 
 ## Los comandos de Claude Code
 
-`commands/` tiene seis slash commands, enlazados por symlink desde
+`commands/` tiene siete slash commands, enlazados por symlink desde
 `~/.claude/commands/`:
 
 | Comando | Qué hace |
 |---|---|
 | `/bita-start [título]` | Arranca un cronómetro. Sin título, lo infiere de la sesión y lo enseña antes |
-| `/bita-stop [id]` | Escribe la nota de lo que se hizo y para. Con varios abiertos, pregunta cuál |
+| `/bita-stop [id]` | Cierra el documento de lo que se hizo y para. Con varios abiertos, pregunta cuál |
 | `/bita-timers` | Qué está corriendo y cuánto llevas hoy |
 | `/bita-log <texto>` | Registra un bloque que ya pasó, cuando se trabajó sin cronómetro |
 | `/bita-init [ruta]` | Da de alta un repositorio: crea su proyecto, lo mapea y revisa el tablero |
-| `/bita-amend [id]` | Rellena a mano el título, el proyecto o la nota de un cronómetro |
+| `/bita-check [id]` | Anota un checkpoint en el documento, mientras el cronómetro corre |
+| `/bita-amend [id]` | Rellena a mano el título o el proyecto de un cronómetro |
 
 Viven en el repo por la misma razón que la skill: usan los flags del CLI, así que
 cambian en el mismo commit.
@@ -261,7 +293,8 @@ Los tests corren con `node --test` sobre los `.ts` directamente. No hay bundler.
 src/db/        el almacén: esquema, migraciones y consultas
 src/domain/    lógica pura: agrupación, duraciones, zonas horarias, solapes
 src/cli/       comandos y formato de salida
-src/state/     configuración y notas en disco
+src/docs/      los documentos de cada entrada: rutas, markdown y escritura
+src/state/     configuración y notas heredadas en disco
 skill/         la skill de Claude Code
 commands/      los slash commands
 scripts/       el instalador

@@ -1,7 +1,7 @@
 ---
 description: Registra en bita un bloque de trabajo que ya pasó
 argument-hint: <título> [de HH:MM a HH:MM, o duración]
-allowed-tools: Bash(bita log:*), Bash(bita entries:*), Bash(bita repo show:*), Write
+allowed-tools: Bash(bita log:*), Bash(bita entries:*), Bash(bita note:*), Bash(bita repo show:*), Read, Write, Edit
 ---
 
 Lo de hoy, para situar el bloque:
@@ -28,6 +28,15 @@ de arreglar que de confirmar.
 Mira la tabla de arriba: si el bloque pisa horas que ya están registradas, dilo.
 El solape está permitido, pero casi siempre aquí significa que la hora está mal.
 
-Si tienes contexto real de lo que se hizo, escribe también la nota en
-`/tmp/bita-note.json` y pásala con `--note-json`. Si no lo tienes, **no la
-inventes**: es mejor un issue sin descripción que uno con una descripción falsa.
+Si tienes contexto real de lo que se hizo, escribe también el documento. Para un
+bloque que ya pasó son **Contexto, Qué se hizo y Pendiente, y nada más**: nadie
+ha comprobado nada ahora, así que no inventes una Verificación.
+
+```
+bita note path <id> --create
+bita note save <id>
+```
+
+Si no tienes ese contexto, **no lo inventes**: es mejor un issue sin descripción
+que uno con una descripción falsa. Y escríbelo como documentación técnica, no
+como acta: nada de «se acordó con el usuario» ni «según lo solicitado».

@@ -36,8 +36,8 @@ es tarea tuya:
    ```
    bita amend --draft --title "<titulo corto>" --project <nombre o id>
    ```
-3. Al terminar el plan, enriquece la descripción con lo que concluyó:
-   `bita amend --draft --note-json <archivo>`.
+3. Al terminar el plan, escribe el primer checkpoint del documento con lo que
+   concluyó: `bita note path <id> --create`, edítalo, `bita note save <id>`.
 
 El título es la clave de agrupación y el summary del issue, así que corto y
 reconocible. Un borrador sin título queda fuera de `summary`, o sea que si no lo
@@ -102,6 +102,76 @@ nada, así que consulta las veces que haga falta.
    sin `parent`: una subtarea huérfana es inenrutable.
 9. **No calcules fechas ni duraciones.** El CLI ya entrega `startedJira`,
    `timeSpent` y `totalHuman` listos. Cópialos literalmente.
+10. **Nada de lo que se publica delata la conversación.** Los documentos y las
+    descripciones de Jira se escriben como documentación técnica, no como el
+    acta de un chat. Ver "Cómo se escribe lo que se publica".
+
+## Cómo se escribe lo que se publica
+
+El documento de la entrada y la descripción del issue los va a leer gente que no
+estuvo aquí, meses después, buscando por qué algo está como está. Tienen que
+leerse como la bitácora técnica de quien hizo el trabajo. **Nada en el texto
+puede delatar que hubo una conversación, ni quién pidió qué, ni que lo escribió
+un asistente.**
+
+### Lista negra
+
+Si una de estas aparece en el texto, la frase está mal y hay que reescribirla
+entera, no suavizarla:
+
+- **Quién lo pidió**: "por decisión del usuario", "se acordó con el usuario", "a
+  petición del usuario", "según lo solicitado", "el usuario pidió / indicó /
+  confirmó / prefirió", "como se solicitó".
+- **La conversación**: "en esta sesión", "durante la conversación", "en el
+  chat", "como se comentó", "se revisó junto con", "se validó con".
+- **Primera persona de charla**: "decidimos", "acordamos", "vimos que", "nos
+  dimos cuenta", "optamos por", "revisamos".
+- **Relleno burocrático**: "se procedió a", "se llevó a cabo la tarea de", "se
+  realizó la implementación de", "cabe destacar", "es importante señalar", "como
+  se mencionó anteriormente".
+- **Hedging**: "creo que", "parece que", "aparentemente", "podría ser que", "en
+  principio", "al parecer", "se asume que".
+- **El asistente**: "asistente", "Claude", "IA", "generado automáticamente",
+  "agente", y cualquier nombre de herramienta del agente.
+- **Narración del tanteo**: "se intentó varias veces", "después de varios
+  intentos", "tras probar distintas opciones".
+
+### Así no / así sí
+
+| Así no | Así sí |
+|---|---|
+| Por decisión del usuario se fijó el tope en 8 horas. | El tope por tarea es de 8 horas: Jira rechaza worklogs mayores en una sola entrada. |
+| Se acordó usar colas en lugar de procesar en línea. | El procesamiento pasa a una cola: en línea, un pico de reservas bloqueaba las respuestas de la API. |
+| Según lo solicitado, se agregó validación al endpoint. | El endpoint valida el id del apartado antes de encolar; sin validación, un id vacío llegaba hasta el consumidor. |
+| Se procedió a la migración de la tabla de pagos. | La tabla de pagos se migró a `payments_v2`. |
+| Creo que el problema era el token expirado. | El SDK devuelve 200 con cuerpo vacío cuando el token expiró; ese era el fallo. |
+| Después de varios intentos logramos que pasaran las pruebas. | `pnpm test`: 148 pasan, 0 fallan. |
+| El usuario prefirió no tocar el front en esta iteración. | El front queda fuera de alcance; sigue esperando 201 y funciona con 202. Anotado en Pendiente. |
+| Se analizó el código y se detectaron varios problemas. | `QUEUE_URL` del entorno de dev apunta a la cola de staging desde marzo. |
+
+### Cómo se escribe entonces
+
+- Voz impersonal en pasado ("se migró", "se añadió") o sujeto técnico ("el
+  worker reintenta cinco veces"). Nunca "yo" ni "nosotros".
+- **Una afirmación es un hecho comprobable.** Si no se comprobó, no se atenúa:
+  se va a "Pendiente".
+- **Las decisiones se justifican por su razón técnica, no por su origen.** Si la
+  razón real es una preferencia de negocio, se escribe como restricción ("el
+  reporte exige bloques de 8 h"), no como autoría.
+- El resultado, no el camino. Excepción: "Hallazgos", donde el camino es el
+  valor, pero escrito como hecho, no como anécdota.
+
+### La prueba de olfato
+
+Antes de guardar el documento y otra vez antes de crear el issue, lee cada
+párrafo y pregunta:
+
+1. **¿Esto lo escribiría alguien en su bitácora técnica, sin haber estado en la
+   conversación?** Si suena a acta de reunión, fuera.
+2. **Si borro la primera mitad de la frase, ¿se pierde información técnica?** Si
+   no se pierde nada, esa mitad era relleno o era la conversación.
+3. **¿Queda alguna palabra de la lista negra?** Si sí, reescribe la frase
+   completa: cambiarle el sujeto no la arregla.
 
 ## La ventana que sigue existiendo
 
@@ -268,9 +338,9 @@ ofrece asignarles uno solo para esta corrida, o dejarlas pendientes.
 
 Antes de crear nada:
 
-1. Elige el tema de la lista cerrada. La señal más fuerte es la **nota rica**
-   del grupo (`notes[]`): dice qué archivos y comandos se tocaron. Después el
-   título, el repo y la rama. El proyecto acota, no decide.
+1. Elige el tema de la lista cerrada. La señal más fuerte es el **documento**
+   del grupo (`docs[]`): «Contexto» dice por qué se hizo y «Tocado» con qué.
+   Después el título, el repo y la rama. El proyecto acota, no decide.
 2. ¿`jiraStories[themeId]` ya tiene una key? → úsala, sin buscar.
 3. Si no, trae las Historias de la épica y **empata por igualdad exacta
    normalizada** (trim, espacios, acentos, minúsculas) contra el nombre canónico:
@@ -341,10 +411,25 @@ En este orden, sin paralelismo:
    `issueTypeName` va por **nombre**, no por id.
    - `summary`: el del grupo, **literal**, sin reescribir. Es la clave de
      agrupación y lo que el usuario reconocerá al buscar.
-   - `description`: si el grupo trae `notes[]`, úsalas — el resumen en prosa
-     primero y después las viñetas de archivos, comandos y recursos tocados.
-     Cierra siempre con la tabla de bloques y los ids de las entradas. Sin
-     notas, solo la tabla, que es lo que había antes.
+   - `description`: se **construye** desde `docs[]`, no se copia. Quita el front
+     matter y quita el H1 —el H1 es el summary y repetirlo es ruido— y deja las
+     secciones en su orden, omitiendo las vacías. En «Tocado», los archivos
+     salen de `touchedFiles` del grupo, no del documento. Cierra **siempre** con
+     la tabla de bloques y los ids de las entradas. Si un documento viene con
+     `markdown: null` y `truncated: true`, léelo de su `path` con Read. Un grupo
+     sin documento pero con archivos tocados da solo «Tocado» y la tabla.
+     **Antes de enviarla, pásale la prueba de olfato**: es el texto que verán
+     otros.
+
+     **Con varios documentos en un grupo no los concatenes**, que produciría
+     siete «Contexto» seguidos. Se funden sección por sección, en orden
+     cronológico: Contexto el del más antiguo; Qué se hizo, Decisiones y
+     Hallazgos en unión sin duplicados; Verificación, **el último resultado**
+     por comprobación, porque una prueba que falló el martes y pasó el jueves se
+     publica como pasó; Pendiente en unión **menos lo que un documento posterior
+     ya resolvió**, porque un pendiente resuelto que llega a Jira manda a
+     alguien a rehacer trabajo hecho. Si dos se contradicen, gana el posterior y
+     el anterior se cae.
    - `assignee`: **siempre**, con el `accountId` del paso 0. Es la única pieza
      del payload que Jira no deduce de nada y que nadie echa en falta hasta que
      busca su propio trabajo y no lo encuentra.
@@ -440,35 +525,82 @@ el usuario encima cuenta; si se fue, no. Ante la duda, pregunta antes de parar.
 Con varios corriendo, `bita ls` los enseña con su id. Para saber qué hay abierto
 antes de proponer nada, míralo: es gratis.
 
+### El documento de la entrada
+
+Cada entrada tiene un documento en markdown. Vive bajo la raíz de documentos, en
+espejo del proyecto: `<proyecto>/<año>/<mes>/<día>-<id>-<titulo>.md`. La base de
+datos guarda su **ruta**, no su texto, así que el archivo es el original y se
+puede abrir, mover de máquina o respaldar por su cuenta.
+
+**La ruta la da el CLI, nunca la inventes.** Corren varios cronómetros a la vez
+y varias sesiones a la vez: una ruta fija sería dos sesiones escribiendo el
+mismo archivo y dos trabajos distintos acabando en el mismo issue.
+
+```
+bita note path <id> --create   la ruta, creando el esqueleto si no existe
+bita note save <id>            registrarlo después de editarlo
+```
+
+El CLI estampa por su cuenta el proyecto, el día, el inicio, el fin, la duración,
+el repositorio y la rama. Tú escribes el cuerpo y nada más. Las secciones son
+estas, y en este orden:
+
+| Sección | Qué responde |
+|---|---|
+| **Contexto** | Por qué existió esto. Lo único que no se reconstruye del diff |
+| **Qué se hizo** | Qué cambió. Viñetas de resultado, no de edición |
+| **Decisiones** | Por qué así y no de la otra forma, con la alternativa descartada |
+| **Hallazgos** | Qué no era obvio: comportamiento raro, límite del entorno, causa raíz |
+| **Verificación** | Comando → resultado real. No «pasó» |
+| **Pendiente** | Qué falta, qué falló, el siguiente paso |
+| **Tocado** | Comandos y recursos. Los archivos los registra el hook, no los repitas |
+
+Contexto, Qué se hizo y Pendiente van siempre. Decisiones y Hallazgos se omiten
+enteras si están vacías: una sección con «N/A» es ruido. GFM plano, sin macros
+ni HTML, y el H1 igual al título.
+
+### Checkpoints: escribir mientras el reloj corre
+
+**El documento no se escribe al parar.** Al parar ya no te acuerdas del porqué,
+y el porqué es la mitad del valor.
+
+Escribe un checkpoint al cerrar un paso que dejó algo en disco, al terminar una
+verificación —saliera bien o mal—, al cambiar de enfoque, al encontrar algo no
+obvio, y cuando algo quede fuera. El de «cambiar de enfoque» es el que más se
+olvida y el único que no se puede reconstruir después.
+
+No escribas uno por cada edición: se documenta el resultado, no la edición. Un
+bloque de dos horas sano tiene entre tres y seis checkpoints; si llevas doce,
+estás narrando la sesión. Uno cabe en una a tres viñetas.
+
+Añade **a la sección que toque** —un hallazgo va a Hallazgos aunque estuvieras
+editando código— y no reescribas lo anterior salvo que resultara falso.
+
+El hook `checkpoint` avisa cuando un cronómetro lleva tres archivos tocados o
+cuarenta y cinco minutos sin documentar, y se calla solo en cuanto lo guardas.
+
 ### Parar
 
-Escribe la nota en un archivo temporal y para en **un solo comando**, para que la
-nota no pueda colgarse de la entrada equivocada:
-
-```json
-{
-  "body": "Resumen en prosa de qué se hizo y por qué, 2-4 frases.",
-  "artifacts": {
-    "files": ["src/x.ts", "terraform/dev/main.tf"],
-    "commands": ["terraform apply", "pnpm test"],
-    "resources": ["https://…"]
-  }
-}
-```
+Cierra el documento —completando Verificación y Pendiente, que solo se pueden
+escribir al final— y para:
 
 ```
-bita stop <id> --note-json /tmp/nota.json
+bita note save <id>
+bita stop <id>
 ```
 
 **Pasa siempre el id cuando haya más de uno corriendo.** Sin id y con varios
 abiertos, `stop` falla con `AMBIGUOUS_TIMER` en vez de adivinar. `--all` los para
-todos, pero entonces la nota no se escribe: una nota pertenece a un trabajo.
+todos, pero entonces no se cierra ningún documento: un documento pertenece a un
+trabajo.
 
-Nada de prosa por `argv`: el quoting se rompe y el texto queda en `ps`.
+Nada de prosa por `argv`: el quoting se rompe y el texto queda en `ps`. El
+documento se edita como archivo, siempre.
 
-**La nota acaba en la descripción de un issue de Jira que verán otros.** Antes de
-publicarla, revisa que no lleve rutas absolutas con nombres internos, secretos ni
-pegotes de log.
+**El documento acaba en la descripción de un issue de Jira que verán otros.**
+Antes de guardarlo, revisa que no lleve rutas absolutas con nombres internos,
+secretos ni pegotes de log, y pásale la prueba de olfato de «Cómo se escribe lo
+que se publica».
 
 ## Manejo de fallos
 
