@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { DOC_SECTIONS } from '../../config/constants.ts'
 import { ConflictError, UsageError } from '../../errors.ts'
 import {
   BASE_OPTIONS,
@@ -385,6 +386,9 @@ export function runCurrent(argv: string[]): number {
             return {
               ...entry,
               docPath: stored ? resolveDocPath(ctx.docsRoot, stored.relPath) : null,
+              docRelPath: stored?.relPath ?? null,
+              sectionsWritten: stored?.sectionCount ?? 0,
+              sectionsTotal: DOC_SECTIONS.length,
               lastNoteAt: state?.lastNoteAt ?? null,
               touchedSinceNote: state?.touchedSinceNote ?? 0,
             }
