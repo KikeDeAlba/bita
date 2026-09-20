@@ -14,7 +14,6 @@ async function tempNotesPath(): Promise<string> {
 
 const defaults = {
   entryId: 1,
-  workspaceId: 456,
   source: 'stop' as const,
   title: 'Live timer',
   recordedAt: '2026-09-19T22:00:00.000Z',

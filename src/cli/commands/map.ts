@@ -1,6 +1,7 @@
 import { UsageError } from '../../errors.ts'
 import { parseCommandArgs, readBoolean, readString } from '../args.ts'
-import { createContext } from '../context.ts'
+import { createLocalContext } from '../local-context.ts'
+import { findProjectById } from '../../db/projects.ts'
 import { readConfig, setProjectMapping, setStory, unsetProjectMapping } from '../../state/config.ts'
 import { renderTable } from '../table.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
@@ -22,7 +23,7 @@ export async function runMap(argv: string[]): Promise<number> {
   if (subcommand === 'list') {
     const config = await readConfig()
     const rows = Object.entries(config.projectMapping).map(([id, mapping]) => ({
-      togglProjectId: Number(id),
+      projectId: Number(id),
       ...mapping,
     }))
 
@@ -47,8 +48,8 @@ export async function runMap(argv: string[]): Promise<number> {
           { header: 'DONE TRANSITION' },
         ],
         rows.map((row) => [
-          String(row.togglProjectId),
-          row.togglProjectName,
+          String(row.projectId),
+          row.projectName,
           row.jiraProjectKey,
           row.parentKey ?? '',
           row.issueTypeName ?? '',
@@ -62,11 +63,11 @@ export async function runMap(argv: string[]): Promise<number> {
   if (subcommand === 'set') {
     const [rawProjectId, rawJiraKey] = args.positionals
     if (!rawProjectId || !rawJiraKey) {
-      throw new UsageError('Usage: toggl map set <togglProjectId> <JIRAKEY> [--issue-type "Tarea"]')
+      throw new UsageError('Usage: toggl map set <projectId> <JIRAKEY> [--issue-type "Tarea"]')
     }
 
-    const togglProjectId = Number(rawProjectId)
-    if (!Number.isInteger(togglProjectId)) {
+    const projectId = Number(rawProjectId)
+    if (!Number.isInteger(projectId)) {
       throw new UsageError(`Invalid Toggl project id: "${rawProjectId}".`)
     }
 
@@ -75,11 +76,12 @@ export async function runMap(argv: string[]): Promise<number> {
       throw new UsageError(`Invalid Jira project key: "${rawJiraKey}". Expected something like DPF.`)
     }
 
-    const ctx = await createContext(args)
-    const project = ctx.catalog.projects.get(togglProjectId)
+    const ctx = createLocalContext(args)
+    const project = findProjectById(ctx.db, projectId)
+    ctx.db.close()
     if (!project) {
       throw new UsageError(
-        `Toggl project ${togglProjectId} was not found in workspace ${ctx.workspaceId}. Run "toggl projects" to list them.`,
+        `No project with id ${projectId}. Run "bita projects" to list them.`,
       )
     }
 
@@ -114,8 +116,8 @@ export async function runMap(argv: string[]): Promise<number> {
     const hierarchy =
       rawHierarchy ?? (parentKey !== undefined ? 'epic-story-subtask' : noEpic ? 'story-subtask' : undefined)
 
-    await setProjectMapping(togglProjectId, {
-      togglProjectName: project.name,
+    await setProjectMapping(projectId, {
+      projectName: project.name,
       jiraProjectKey,
       ...(parentKey !== undefined ? { parentKey } : {}),
       ...(hierarchy !== undefined ? { hierarchy } : {}),
@@ -127,33 +129,33 @@ export async function runMap(argv: string[]): Promise<number> {
     if (readBoolean(args, 'json')) {
       writeJson(
         successEnvelope('map set', {
-          togglProjectId,
-          togglProjectName: project.name,
+          projectId,
+          projectName: project.name,
           jiraProjectKey,
           parentKey: parentKey ?? null,
         }),
       )
     } else {
       const under = parentKey ? ` under ${parentKey}` : ''
-      writeOut(`Mapped "${project.name}" (${togglProjectId}) to Jira project ${jiraProjectKey}${under}.`)
+      writeOut(`Mapped "${project.name}" (${projectId}) to Jira project ${jiraProjectKey}${under}.`)
     }
     return 0
   }
 
   if (subcommand === 'unset') {
     const [rawProjectId] = args.positionals
-    if (!rawProjectId) throw new UsageError('Usage: toggl map unset <togglProjectId>')
+    if (!rawProjectId) throw new UsageError('Usage: toggl map unset <projectId>')
 
-    const togglProjectId = Number(rawProjectId)
-    if (!Number.isInteger(togglProjectId)) {
+    const projectId = Number(rawProjectId)
+    if (!Number.isInteger(projectId)) {
       throw new UsageError(`Invalid Toggl project id: "${rawProjectId}".`)
     }
 
-    const removed = await unsetProjectMapping(togglProjectId)
+    const removed = await unsetProjectMapping(projectId)
     if (readBoolean(args, 'json')) {
-      writeJson(successEnvelope('map unset', { togglProjectId, removed }))
+      writeJson(successEnvelope('map unset', { projectId, removed }))
     } else {
-      writeOut(removed ? `Removed the mapping for ${togglProjectId}.` : `No mapping existed for ${togglProjectId}.`)
+      writeOut(removed ? `Removed the mapping for ${projectId}.` : `No mapping existed for ${projectId}.`)
     }
     return 0
   }
@@ -161,11 +163,11 @@ export async function runMap(argv: string[]): Promise<number> {
   if (subcommand === 'story') {
     const [rawProjectId, themeId, rawIssueKey] = args.positionals
     if (!rawProjectId || !themeId || !rawIssueKey) {
-      throw new UsageError('Usage: toggl map story <togglProjectId> <themeId> <ISSUE-KEY>')
+      throw new UsageError('Usage: toggl map story <projectId> <themeId> <ISSUE-KEY>')
     }
 
-    const togglProjectId = Number(rawProjectId)
-    if (!Number.isInteger(togglProjectId)) {
+    const projectId = Number(rawProjectId)
+    if (!Number.isInteger(projectId)) {
       throw new UsageError(`Invalid Toggl project id: "${rawProjectId}".`)
     }
 
@@ -174,16 +176,16 @@ export async function runMap(argv: string[]): Promise<number> {
       throw new UsageError(`Invalid issue key: "${rawIssueKey}". Expected something like INN-1230.`)
     }
 
-    await setStory(togglProjectId, themeId, {
+    await setStory(projectId, themeId, {
       key: issueKey,
       summary: readString(args, 'summary') ?? themeId,
       verifiedAt: new Date().toISOString(),
     })
 
     if (readBoolean(args, 'json')) {
-      writeJson(successEnvelope('map story', { togglProjectId, themeId, issueKey }))
+      writeJson(successEnvelope('map story', { projectId, themeId, issueKey }))
     } else {
-      writeOut(`Theme "${themeId}" of project ${togglProjectId} now points at ${issueKey}.`)
+      writeOut(`Theme "${themeId}" of project ${projectId} now points at ${issueKey}.`)
     }
     return 0
   }

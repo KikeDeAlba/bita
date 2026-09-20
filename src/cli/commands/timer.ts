@@ -1,147 +1,109 @@
 import { readFile } from 'node:fs/promises'
 import { ConflictError, UsageError } from '../../errors.ts'
-import { TogglNotFoundError } from '../../http/errors.ts'
-import { BASE_OPTIONS, parseCommandArgs, readBoolean, readInteger, readString, readStringList, type ParsedArgs } from '../args.ts'
-import { createLeanContext, type LeanContext } from '../lean-context.ts'
-import { currentEntry, deleteEntry, startEntry, stopEntry } from '../../toggl/timer.ts'
-import { canonicalizeTagNames, emptyCatalog } from '../../toggl/catalog.ts'
-import { enrichEntry } from '../../domain/enrich.ts'
-import { isMirrorFresh, readRunningMirror, writeRunningMirror } from '../../state/running.ts'
-import { appendNote, parseNoteInput, type NoteSource } from '../../state/notes.ts'
-import { currentRepoIdentity } from './repo.ts'
-import { writeConfig } from '../../state/config.ts'
-import { promptConfirm, promptText } from '../prompt.ts'
+import {
+  BASE_OPTIONS,
+  parseCommandArgs,
+  readBoolean,
+  readString,
+  readStringList,
+  type ParsedArgs,
+} from '../args.ts'
+import { createLocalContext, type LocalContext } from '../local-context.ts'
 import { successEnvelope, writeErr, writeJson, writeOut } from '../output.ts'
+import { renderTable } from '../table.ts'
+import { enrichEntry } from '../../domain/enrich.ts'
 import { formatDuration } from '../../domain/duration.ts'
-import type { WireTimeEntry } from '../../toggl/wire-types.ts'
+import { parseClockTime, parseDurationSeconds } from '../../domain/duration-input.ts'
 import type { EnrichedTimeEntry } from '../../domain/types.ts'
-import { PENDING_TAG, PENDING_TAG_FALLBACK, TITLE_HARD_MAX, TITLE_SOFT_MAX } from '../../config/constants.ts'
+import {
+  countRunning,
+  deleteEntry,
+  findEntryById,
+  insertEntry,
+  listRunning,
+  stopEntry,
+} from '../../db/entries.ts'
+import { findProjectByName, listProjects } from '../../db/projects.ts'
+import type { EntryWithProjectRow } from '../../db/rows.ts'
+import { appendNote, parseNoteInput, type NoteSource } from '../../state/notes.ts'
+import { readConfig, setRepoMapping } from '../../state/config.ts'
+import { currentRepoIdentity } from './repo.ts'
+import { promptText } from '../prompt.ts'
 
 const TIMER_OPTIONS = {
-  title: { type: 'string' as const },
   project: { type: 'string' as const },
-  'no-pending': { type: 'boolean' as const, default: false },
-  billable: { type: 'boolean' as const, default: false },
-  switch: { type: 'boolean' as const, default: false },
-  force: { type: 'boolean' as const, default: false },
-  check: { type: 'boolean' as const, default: false },
-  id: { type: 'string' as const },
   'note-json': { type: 'string' as const },
   'note-file': { type: 'string' as const },
   file: { type: 'string' as const, multiple: true },
   command: { type: 'string' as const, multiple: true },
   resource: { type: 'string' as const, multiple: true },
+  all: { type: 'boolean' as const, default: false },
+  last: { type: 'boolean' as const, default: false },
+  at: { type: 'string' as const },
+  from: { type: 'string' as const },
+  to: { type: 'string' as const },
+  for: { type: 'string' as const },
   'require-running': { type: 'boolean' as const, default: false },
-  yes: { type: 'boolean' as const, default: false },
-  tag: { type: 'string' as const, multiple: true },
-}
-
-function enrich(ctx: LeanContext, entry: WireTimeEntry): EnrichedTimeEntry {
-  return enrichEntry(entry, ctx.catalog ?? emptyCatalog(), ctx.timezone, ctx.now)
 }
 
 function requireTitle(args: ParsedArgs): string {
-  const title = (readString(args, 'title') ?? args.positionals.join(' ')).trim()
-  if (title.length < 3) {
-    throw new UsageError(
-      'A timer needs a title of at least 3 characters: it becomes the Jira summary and the grouping key.',
-    )
-  }
-  if (title.length > TITLE_HARD_MAX) {
-    throw new UsageError(`The title is ${title.length} characters; keep it under ${TITLE_HARD_MAX}.`)
-  }
-  if (title.length > TITLE_SOFT_MAX) {
-    writeErr(`Warning: the title is ${title.length} characters. Short titles read better in Jira.`)
-  }
+  const title = args.positionals.join(' ').trim()
+  if (!title) throw new UsageError('A title is required: bita start "what you are doing".')
   return title
 }
 
-interface PendingTag {
-  tagIds?: number[]
-  tagNames?: string[]
+function enrich(ctx: LocalContext, row: EntryWithProjectRow): EnrichedTimeEntry {
+  return enrichEntry(row, ctx.timezone, ctx.now)
 }
 
-async function resolvePendingTag(ctx: LeanContext, extra: string[]): Promise<PendingTag> {
-  const wanted = [PENDING_TAG, ...extra]
-
-  if (ctx.catalog) {
-    const ids: number[] = []
-    const missing: string[] = []
-    for (const name of wanted) {
-      const tag = ctx.catalog.tagsByName.get(name.toLowerCase())
-      if (tag) ids.push(tag.id)
-      else missing.push(name)
-    }
-    if (missing.length === 0) {
-      const canonical = canonicalizeTagNames(ctx.catalog, [PENDING_TAG])[0]
-      if (canonical && ctx.config.defaults?.pendingTagName !== canonical) {
-        ctx.config.defaults = { ...ctx.config.defaults, pendingTagName: canonical }
-        await writeConfig(ctx.config)
-      }
-      return { tagIds: ids }
-    }
-    return { tagNames: canonicalizeTagNames(ctx.catalog, wanted) }
-  }
-
-  const remembered = ctx.config.defaults?.pendingTagName
-  if (remembered) return { tagNames: [remembered, ...extra] }
-
-  throw new UsageError(
-    `No tag catalog is cached, so "${PENDING_TAG_FALLBACK}" might be created a second time in lowercase. Run "toggl tags" once and try again.`,
-  )
-}
-
-async function resolveProjectId(ctx: LeanContext, args: ParsedArgs, json: boolean): Promise<number | null> {
+async function resolveProjectId(
+  ctx: LocalContext,
+  args: ParsedArgs,
+  json: boolean,
+): Promise<number | null> {
   const raw = readString(args, 'project')
   if (raw) {
     const asNumber = Number(raw)
-    if (Number.isInteger(asNumber)) return asNumber
-    const matches = [...(ctx.catalog?.projects.values() ?? [])].filter(
-      (project) => project.name.toLowerCase() === raw.toLowerCase(),
-    )
-    const match = matches[0]
-    if (matches.length !== 1 || !match) {
-      throw new UsageError(`Could not resolve the project "${raw}" to a single id. Pass --project <id>.`)
+    if (Number.isInteger(asNumber) && asNumber > 0) return asNumber
+    const match = findProjectByName(ctx.db, raw)
+    if (!match) {
+      throw new UsageError(`No project named "${raw}". Run "bita projects" to see them.`)
     }
     return match.id
   }
 
   const identity = await currentRepoIdentity()
   if (identity) {
-    const mapped = ctx.config.repoMapping[identity.slug]
-    if (mapped) return mapped.togglProjectId
+    const config = await readConfig()
+    const mapped = config.repoMapping[identity.slug]
+    if (mapped) return mapped.projectId
   }
 
-  const candidates = [...(ctx.catalog?.projects.values() ?? [])]
-    .filter((project) => project.active)
-    .slice(0, 10)
-    .map((project) => ({ id: project.id, name: project.name }))
+  const candidates = listProjects(ctx.db).slice(0, 10)
 
   if (json || !process.stdin.isTTY || !identity) {
     throw new ConflictError(
       identity
-        ? `No Toggl project is mapped to the repository "${identity.slug}".`
+        ? `No project is mapped to the repository "${identity.slug}".`
         : 'Not inside a mapped repository and no --project was given.',
       'REPO_NOT_MAPPED',
-      identity ? `toggl repo set ${identity.slug} <togglProjectId>` : 'toggl start "title" --project <id>',
+      identity ? `bita repo set ${identity.slug} <projectId>` : 'bita start "title" --project <id>',
     )
   }
 
-  writeErr(`The repository "${identity.slug}" has no Toggl project yet.`)
+  writeErr(`The repository "${identity.slug}" has no project yet.`)
   for (const [index, candidate] of candidates.entries()) {
     writeErr(`  ${index + 1}. ${candidate.name} (${candidate.id})`)
   }
-  const answer = await promptText('Pick a number, or type a Toggl project id: ')
+  const answer = await promptText('Pick a number, or type a project id: ')
   const picked = Number(answer)
   if (!Number.isInteger(picked) || picked <= 0) throw new UsageError('No project chosen.')
   const fromList = candidates[picked - 1]
   const projectId = picked <= candidates.length && fromList ? fromList.id : picked
 
-  const { setRepoMapping } = await import('../../state/config.ts')
   await setRepoMapping(identity.slug, {
-    togglProjectId: projectId,
-    togglProjectName: ctx.catalog?.projects.get(projectId)?.name ?? String(projectId),
-    workspaceId: ctx.workspaceId,
+    projectId: projectId,
+    projectName: listProjects(ctx.db, true).find((p) => p.id === projectId)?.name ?? String(projectId),
     slugSource: identity.source,
     verifiedAt: new Date().toISOString(),
   })
@@ -172,8 +134,7 @@ async function loadNoteBody(args: ParsedArgs): Promise<Record<string, unknown> |
 }
 
 async function recordNote(
-  ctx: LeanContext,
-  entry: WireTimeEntry,
+  entry: { id: number; description: string },
   raw: Record<string, unknown> | null,
   source: NoteSource,
 ): Promise<boolean> {
@@ -181,9 +142,8 @@ async function recordNote(
   const identity = await currentRepoIdentity()
   const note = parseNoteInput(raw, {
     entryId: entry.id,
-    workspaceId: entry.workspace_id,
     source,
-    title: entry.description ?? '',
+    title: entry.description,
     recordedAt: new Date().toISOString(),
     ...(identity
       ? {
@@ -199,224 +159,294 @@ async function recordNote(
   return true
 }
 
-async function mirrorFrom(entry: WireTimeEntry | null): Promise<void> {
-  if (!entry) {
-    await writeRunningMirror({ state: 'idle', writtenAt: new Date().toISOString() })
-    return
-  }
-  await writeRunningMirror({
-    state: 'running',
-    writtenAt: new Date().toISOString(),
-    entryId: entry.id,
-    workspaceId: entry.workspace_id,
-    projectId: entry.project_id,
-    description: entry.description ?? '',
-    start: entry.start,
-    tags: entry.tags ?? [],
-  })
-}
-
 export async function runStart(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, TIMER_OPTIONS, BASE_OPTIONS)
   const json = readBoolean(args, 'json')
   const title = requireTitle(args)
-  const ctx = await createLeanContext(args)
+  const ctx = createLocalContext(args)
 
-  const mirror = await readRunningMirror()
-  const trustMirror = mirror !== null && isMirrorFresh(mirror, ctx.now) && !readBoolean(args, 'check')
-  let running: WireTimeEntry | null = null
+  try {
+    const projectId = await resolveProjectId(ctx, args, json)
+    const at = readString(args, 'at')
+    const startedAt = at === undefined ? ctx.now.toISOString() : parseClockTime(at, ctx.now, '--at').toISOString()
 
-  if (trustMirror && mirror.state === 'running') {
-    if (!readBoolean(args, 'switch') && !readBoolean(args, 'force')) {
-      throw new ConflictError(
-        `A timer is already running: ${mirror.entryId} "${mirror.description ?? ''}" since ${mirror.start ?? 'unknown'}.`,
-        'TIMER_ALREADY_RUNNING',
-        'Stop it with "toggl stop", or start this one with "toggl start --switch".',
+    const alreadyRunning = listRunning(ctx.db)
+    const created = insertEntry(ctx.db, {
+      description: title,
+      projectId,
+      startedAt,
+      source: 'timer',
+      now: ctx.now.toISOString(),
+    })
+
+    const row = listRunning(ctx.db).find((entry) => entry.id === created.id)
+    const enriched = row ? enrich(ctx, row) : null
+
+    if (json) {
+      writeJson(
+        successEnvelope('start', enriched, {
+          alsoRunning: alreadyRunning.map((entry) => ({
+            id: entry.id,
+            description: entry.description,
+          })),
+          runningCount: countRunning(ctx.db),
+        }),
       )
-    }
-    if (mirror.entryId && mirror.workspaceId) {
-      await stopEntry(ctx.client, mirror.workspaceId, mirror.entryId)
-    }
-  } else if (!trustMirror && !readBoolean(args, 'force')) {
-    running = await currentEntry(ctx.client)
-    if (running) {
-      if (!readBoolean(args, 'switch')) {
-        throw new ConflictError(
-          `A timer is already running: ${running.id} "${running.description ?? ''}" since ${running.start}.`,
-          'TIMER_ALREADY_RUNNING',
-          'Stop it with "toggl stop", or start this one with "toggl start --switch".',
-        )
+    } else {
+      writeOut(`Started #${created.id}: ${title}`)
+      if (enriched?.projectName) writeOut(`Project : ${enriched.projectName}`)
+      writeOut(`Since   : ${enriched?.startLocal.slice(11, 16) ?? ''}`)
+      if (alreadyRunning.length > 0) {
+        writeOut('')
+        writeOut(`Also running (${alreadyRunning.length}):`)
+        for (const entry of alreadyRunning) writeOut(`  #${entry.id} ${entry.description}`)
       }
-      await stopEntry(ctx.client, running.workspace_id, running.id)
     }
-  }
-
-  const projectId = await resolveProjectId(ctx, args, json)
-  const tag = readBoolean(args, 'no-pending')
-    ? { tagNames: readStringList(args, 'tag') }
-    : await resolvePendingTag(ctx, readStringList(args, 'tag'))
-
-  const entry = await startEntry(ctx.client, {
-    workspaceId: ctx.workspaceId,
-    description: title,
-    start: new Date(),
-    projectId,
-    billable: readBoolean(args, 'billable'),
-    ...tag,
-  })
-
-  await mirrorFrom(entry)
-  const noteRecorded = await recordNote(ctx, entry, await loadNoteBody(args), 'start')
-  const enriched = enrich(ctx, entry)
-
-  if (json) {
-    writeJson(
-      successEnvelope('start', { ...enriched, noteRecorded }, { apiCalls: ctx.apiCalls(), workspaceId: ctx.workspaceId }),
-    )
     return 0
+  } finally {
+    ctx.db.close()
   }
-
-  writeOut(`Started  ${entry.id}  ${enriched.description}`)
-  writeOut(`Project  ${enriched.projectName ?? '(no project)'}`)
-  writeOut(`Tags     ${enriched.tags.join(', ') || '(none)'}`)
-  writeOut(`Since    ${enriched.startLocal.slice(0, 16).replace('T', ' ')}`)
-  return 0
 }
 
 export async function runStop(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, TIMER_OPTIONS, BASE_OPTIONS)
   const json = readBoolean(args, 'json')
-  const ctx = await createLeanContext(args)
+  const ctx = createLocalContext(args)
 
-  const explicitId = readInteger(args, 'id')
-  const mirror = await readRunningMirror()
-  let stopped: WireTimeEntry | null = null
+  try {
+    const running = listRunning(ctx.db)
 
-  const candidateId = explicitId ?? (mirror?.state === 'running' ? mirror.entryId : undefined)
-  const candidateWorkspace = mirror?.workspaceId ?? ctx.workspaceId
-
-  if (candidateId) {
-    try {
-      stopped = await stopEntry(ctx.client, candidateWorkspace, candidateId)
-    } catch (error) {
-      if (!(error instanceof TogglNotFoundError)) throw error
-      stopped = null
+    if (running.length === 0) {
+      if (readBoolean(args, 'require-running')) {
+        throw new ConflictError('Nothing is running.', 'NO_RUNNING_TIMER', 'bita start "title"')
+      }
+      if (json) writeJson(successEnvelope('stop', null, { stopped: 0 }))
+      else writeOut('Nothing is running.')
+      return 0
     }
-  }
 
-  if (!stopped) {
-    const running = await currentEntry(ctx.client)
-    if (running) stopped = await stopEntry(ctx.client, running.workspace_id, running.id)
-  }
+    const targets = await chooseTargets(ctx, args, running, json)
+    const at = readString(args, 'at')
+    const stoppedAt = at === undefined ? ctx.now.toISOString() : parseClockTime(at, ctx.now, '--at').toISOString()
+    const noteBody = await loadNoteBody(args)
 
-  if (!stopped) {
-    await mirrorFrom(null)
-    if (readBoolean(args, 'require-running')) {
-      throw new ConflictError('No timer is running.', 'NO_RUNNING_ENTRY', 'Start one with "toggl start".')
+    const stopped: EnrichedTimeEntry[] = []
+    for (const target of targets) {
+      const snapshot = enrich(ctx, { ...target, stoppedAt })
+      stopEntry(ctx.db, target.id, stoppedAt, ctx.now.toISOString())
+      if (targets.length === 1) {
+        await recordNote({ id: target.id, description: target.description }, noteBody, 'stop')
+      }
+      stopped.push(snapshot)
     }
-    if (json) writeJson(successEnvelope('stop', { stopped: false, reason: 'no-running-entry' }))
-    else writeOut('No timer is running.')
+
+    if (json) {
+      writeJson(
+        successEnvelope('stop', stopped, {
+          stopped: stopped.length,
+          stillRunning: countRunning(ctx.db),
+          noteRecorded: targets.length === 1 && noteBody !== null,
+        }),
+      )
+    } else {
+      for (const entry of stopped) {
+        writeOut(`Stopped #${entry.id}: ${entry.description} (${entry.durationHuman})`)
+      }
+      const left = countRunning(ctx.db)
+      if (left > 0) writeOut(`${left} still running.`)
+    }
     return 0
+  } finally {
+    ctx.db.close()
   }
-
-  await mirrorFrom(null)
-  const noteRecorded = await recordNote(ctx, stopped, await loadNoteBody(args), 'stop')
-  const enriched = enrich(ctx, stopped)
-
-  if (json) {
-    writeJson(
-      successEnvelope(
-        'stop',
-        { ...enriched, stopped: true, noteRecorded },
-        { apiCalls: ctx.apiCalls(), workspaceId: ctx.workspaceId },
-      ),
-    )
-    return 0
-  }
-
-  writeOut(`Stopped  ${stopped.id}  ${enriched.description}`)
-  writeOut(`Elapsed  ${formatDuration(enriched.durationSeconds)}`)
-  writeOut(`Project  ${enriched.projectName ?? '(no project)'}`)
-  if (noteRecorded) writeOut('Note     saved')
-  return 0
 }
 
-export async function runCurrent(argv: string[]): Promise<number> {
+async function chooseTargets(
+  ctx: LocalContext,
+  args: ParsedArgs,
+  running: EntryWithProjectRow[],
+  json: boolean,
+): Promise<EntryWithProjectRow[]> {
+  if (readBoolean(args, 'all')) return running
+
+  const [positional] = args.positionals
+  if (positional !== undefined) {
+    const id = Number(positional)
+    if (!Number.isInteger(id)) throw new UsageError(`"${positional}" is not an entry id.`)
+    const match = running.find((entry) => entry.id === id)
+    if (!match) throw new UsageError(`Entry #${id} is not running.`)
+    return [match]
+  }
+
+  if (readBoolean(args, 'last')) {
+    const last = running.at(-1)
+    return last ? [last] : []
+  }
+
+  const only = running[0]
+  if (running.length === 1 && only) return [only]
+
+  if (json || !process.stdin.isTTY) {
+    throw new ConflictError(
+      `${running.length} timers are running; say which one.`,
+      'AMBIGUOUS_TIMER',
+      'bita stop <id>, bita stop --last or bita stop --all',
+    )
+  }
+
+  writeErr(`${running.length} timers are running:`)
+  for (const entry of running) {
+    writeErr(`  #${entry.id} ${entry.description} (${enrich(ctx, entry).durationHuman})`)
+  }
+  const answer = await promptText('Which id? (or "all"): ')
+  if (answer.trim().toLowerCase() === 'all') return running
+  const id = Number(answer)
+  const match = running.find((entry) => entry.id === id)
+  if (!match) throw new UsageError(`Entry #${answer} is not running.`)
+  return [match]
+}
+
+export function runCurrent(argv: string[]): number {
   const args = parseCommandArgs(argv, TIMER_OPTIONS, BASE_OPTIONS)
   const json = readBoolean(args, 'json')
-  const ctx = await createLeanContext(args)
+  const ctx = createLocalContext(args)
 
-  const running = await currentEntry(ctx.client)
-  await mirrorFrom(running)
+  try {
+    const running = listRunning(ctx.db).map((row) => enrich(ctx, row))
+    const totalSeconds = running.reduce((sum, entry) => sum + entry.durationSeconds, 0)
 
-  if (!running) {
-    if (json) writeJson(successEnvelope('current', null, { apiCalls: ctx.apiCalls() }))
-    else writeOut('No timer is running.')
+    if (json) {
+      writeJson(
+        successEnvelope('current', running, {
+          runningCount: running.length,
+          totalSeconds,
+          totalHuman: formatDuration(totalSeconds),
+        }),
+      )
+      return 0
+    }
+
+    if (running.length === 0) {
+      writeOut('Nothing is running.')
+      return 0
+    }
+
+    writeOut(
+      renderTable(
+        [
+          { header: 'ID', align: 'right' },
+          { header: 'SINCE' },
+          { header: 'PROJECT' },
+          { header: 'DESCRIPTION' },
+          { header: 'ELAPSED', align: 'right' },
+        ],
+        running.map((entry) => [
+          String(entry.id),
+          entry.startLocal.slice(11, 16),
+          entry.projectName ?? '(no project)',
+          entry.description,
+          entry.durationHuman,
+        ]),
+      ),
+    )
+    if (running.length > 1) {
+      writeOut('')
+      writeOut(`${running.length} timers, ${formatDuration(totalSeconds)} of overlapping time.`)
+    }
     return 0
+  } finally {
+    ctx.db.close()
   }
-
-  const enriched = enrich(ctx, running)
-  if (json) {
-    writeJson(successEnvelope('current', enriched, { apiCalls: ctx.apiCalls() }))
-    return 0
-  }
-
-  writeOut(`Running  ${running.id}  ${enriched.description}`)
-  writeOut(`Project  ${enriched.projectName ?? '(no project)'}`)
-  writeOut(`Elapsed  ${formatDuration(enriched.durationSeconds)}  since ${enriched.startLocal.slice(11, 16)}`)
-  return 0
 }
 
 export async function runCancel(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, TIMER_OPTIONS, BASE_OPTIONS)
   const json = readBoolean(args, 'json')
-  const ctx = await createLeanContext(args)
+  const ctx = createLocalContext(args)
 
-  const mirror = await readRunningMirror()
-  let target: WireTimeEntry | null = null
-
-  if (mirror?.state === 'running' && mirror.entryId && mirror.workspaceId) {
-    target = {
-      id: mirror.entryId,
-      at: mirror.writtenAt,
-      description: mirror.description ?? '',
-      start: mirror.start ?? mirror.writtenAt,
-      stop: null,
-      duration: -1,
-      billable: false,
-      project_id: mirror.projectId ?? null,
-      task_id: null,
-      tags: mirror.tags ?? [],
-      tag_ids: [],
-      user_id: 0,
-      workspace_id: mirror.workspaceId,
-    }
-  } else {
-    target = await currentEntry(ctx.client)
-  }
-
-  if (!target) {
-    if (json) writeJson(successEnvelope('cancel', { cancelled: false, reason: 'no-running-entry' }))
-    else writeOut('No timer is running.')
-    return 0
-  }
-
-  if (!readBoolean(args, 'yes')) {
-    if (json || !process.stdin.isTTY) {
-      throw new UsageError('Cancelling discards the entry. Pass --yes to confirm.')
-    }
-    const confirmed = await promptConfirm(`Discard ${target.id} "${target.description ?? ''}"?`)
-    if (!confirmed) {
-      writeOut('Cancelled nothing.')
+  try {
+    const running = listRunning(ctx.db)
+    if (running.length === 0) {
+      if (json) writeJson(successEnvelope('cancel', null, { discarded: 0 }))
+      else writeOut('Nothing is running.')
       return 0
     }
+
+    const targets = await chooseTargets(ctx, args, running, json)
+    const discarded = targets.map((target) => {
+      const snapshot = enrich(ctx, target)
+      deleteEntry(ctx.db, target.id)
+      return snapshot
+    })
+
+    if (json) {
+      writeJson(successEnvelope('cancel', discarded, { discarded: discarded.length }))
+    } else {
+      for (const entry of discarded) {
+        writeOut(`Discarded #${entry.id}: ${entry.description} (${entry.durationHuman} lost)`)
+      }
+    }
+    return 0
+  } finally {
+    ctx.db.close()
   }
-
-  await deleteEntry(ctx.client, target.workspace_id, target.id)
-  await mirrorFrom(null)
-  await recordNote(ctx, target, { body: 'Entry discarded before it was registered.' }, 'cancel')
-
-  if (json) writeJson(successEnvelope('cancel', { cancelled: true, entryId: target.id }))
-  else writeOut(`Deleted ${target.id}. The note is kept, marked cancelled.`)
-  return 0
 }
+
+export async function runLog(argv: string[]): Promise<number> {
+  const args = parseCommandArgs(argv, TIMER_OPTIONS, BASE_OPTIONS)
+  const json = readBoolean(args, 'json')
+  const title = requireTitle(args)
+  const ctx = createLocalContext(args)
+
+  try {
+    const projectId = await resolveProjectId(ctx, args, json)
+    const rawFrom = readString(args, 'from')
+    const rawTo = readString(args, 'to')
+    const rawFor = readString(args, 'for')
+
+    if (rawFrom === undefined) {
+      throw new UsageError('bita log needs --from, plus either --to or --for.')
+    }
+    if (rawTo === undefined && rawFor === undefined) {
+      throw new UsageError('bita log needs either --to or --for to know how long it lasted.')
+    }
+
+    const startedAt = parseClockTime(rawFrom, ctx.now, '--from').toISOString()
+    const stoppedAt =
+      rawTo !== undefined
+        ? parseClockTime(rawTo, ctx.now, '--to').toISOString()
+        : new Date(Date.parse(startedAt) + parseDurationSeconds(rawFor ?? '', '--for') * 1000).toISOString()
+
+    if (Date.parse(stoppedAt) <= Date.parse(startedAt)) {
+      throw new UsageError('The block ends before it starts.')
+    }
+
+    const created = insertEntry(ctx.db, {
+      description: title,
+      projectId,
+      startedAt,
+      stoppedAt,
+      source: 'manual',
+      now: ctx.now.toISOString(),
+    })
+
+    await recordNote(
+      { id: created.id, description: created.description },
+      await loadNoteBody(args),
+      'log',
+    )
+
+    const row = findEntryById(ctx.db, created.id)
+    const seconds = row ? Math.round((Date.parse(stoppedAt) - Date.parse(startedAt)) / 1000) : 0
+
+    if (json) {
+      writeJson(successEnvelope('log', { ...created, durationSeconds: seconds }))
+    } else {
+      writeOut(`Logged #${created.id}: ${title} (${formatDuration(seconds)})`)
+    }
+    return 0
+  } finally {
+    ctx.db.close()
+  }
+}
+

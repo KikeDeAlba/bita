@@ -35,7 +35,7 @@ export async function runConfig(argv: string[]): Promise<number> {
 
     if (!cloudId && !site && !accountId && !issueType) {
       throw new UsageError(
-        'Usage: toggl config set-jira [--cloud-id ID] [--site URL] [--account-id ID] [--issue-type NAME]',
+        'Usage: bita config set-jira [--cloud-id ID] [--site URL] [--account-id ID] [--issue-type NAME]',
       )
     }
 

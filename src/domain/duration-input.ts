@@ -25,6 +25,7 @@ export function parseClockTime(input: string, reference: Date, flag: string): Da
     if (hours > 23 || minutes > 59) {
       throw new UsageError(`Invalid time for ${flag}: "${input}".`)
     }
+    // TODO(timezone): setHours resolves against the system zone, not the configured one
     const at = new Date(reference)
     at.setHours(hours, minutes, 0, 0)
     return at
