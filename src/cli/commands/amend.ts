@@ -3,9 +3,9 @@ import { UsageError } from '../../errors.ts'
 import { BASE_OPTIONS, parseCommandArgs, readBoolean, readString } from '../args.ts'
 import { createLocalContext, type LocalContext } from '../local-context.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
-import { findEntryById, listRunningDrafts, updateEntry } from '../../db/entries.ts'
+import { findEntryById, findEntryWithProject, listRunningDrafts, updateEntry } from '../../db/entries.ts'
 import { findProjectById, findProjectByName } from '../../db/projects.ts'
-import { appendNote, parseNoteInput } from '../../state/notes.ts'
+import { recordEntryDoc } from '../../docs/record.ts'
 import { currentRepoIdentity } from './repo.ts'
 
 const OPTIONS = {
@@ -13,6 +13,28 @@ const OPTIONS = {
   title: { type: 'string' as const },
   project: { type: 'string' as const },
   'note-json': { type: 'string' as const },
+  'note-md': { type: 'string' as const },
+  section: { type: 'string' as const },
+}
+
+async function readMarkdown(path: string): Promise<string> {
+  try {
+    return await readFile(path, 'utf8')
+  } catch (error) {
+    throw new UsageError(`Could not read the markdown at ${path}: ${String(error)}`)
+  }
+}
+
+async function readLegacyBody(path: string): Promise<string> {
+  let raw: unknown
+  try {
+    raw = JSON.parse(await readFile(path, 'utf8')) as unknown
+  } catch (error) {
+    throw new UsageError(`Could not read the note at ${path}: ${String(error)}`)
+  }
+  const body = (raw as { body?: unknown })?.body
+  if (typeof body !== 'string') throw new UsageError('The note needs a "body" string.')
+  return body
 }
 
 function resolveTarget(ctx: LocalContext, args: import('../args.ts').ParsedArgs): number {
@@ -56,9 +78,10 @@ export async function runAmend(argv: string[]): Promise<number> {
   const title = readString(args, 'title')
   const rawProject = readString(args, 'project')
   const notePath = readString(args, 'note-json')
+  const markdownPath = readString(args, 'note-md')
 
-  if (title === undefined && rawProject === undefined && notePath === undefined) {
-    throw new UsageError('Nothing to amend. Pass --title, --project or --note-json.')
+  if (title === undefined && rawProject === undefined && notePath === undefined && markdownPath === undefined) {
+    throw new UsageError('Nothing to amend. Pass --title, --project or --note-md.')
   }
 
   const ctx = createLocalContext(args)
@@ -80,40 +103,40 @@ export async function runAmend(argv: string[]): Promise<number> {
       new Date().toISOString(),
     )
 
+    let section: { heading: string; body: string } | undefined
     if (notePath !== undefined) {
-      let raw: unknown
-      try {
-        raw = JSON.parse(await readFile(notePath, 'utf8'))
-      } catch (error) {
-        throw new UsageError(`Could not read the note at ${notePath}: ${String(error)}`)
-      }
-      const identity = await currentRepoIdentity()
-      await appendNote(
-        parseNoteInput(raw, {
-          entryId: id,
-          source: 'manual',
-          title: title ?? entry.description,
-          recordedAt: new Date().toISOString(),
-          ...(identity
-            ? {
-                repo: {
-                  slug: identity.slug,
-                  ...(identity.branch !== undefined ? { branch: identity.branch } : {}),
-                  ...(identity.headSha !== undefined ? { headSha: identity.headSha } : {}),
-                },
-              }
-            : {}),
-        }),
-      )
+      section = { heading: 'Resumen', body: await readLegacyBody(notePath) }
     }
+    if (markdownPath !== undefined) {
+      section = { heading: readString(args, 'section') ?? 'Qué se hizo', body: await readMarkdown(markdownPath) }
+    }
+
+    const wasDraft = entry.description.trim().length === 0
+    const amended = findEntryWithProject(ctx.db, id)
+    const identity = await currentRepoIdentity()
+    const recorded = amended
+      ? await recordEntryDoc(ctx, amended, {
+          source: 'manual',
+          identity: identity
+            ? {
+                slug: identity.slug,
+                ...(identity.branch !== undefined ? { branch: identity.branch } : {}),
+                ...(identity.headSha !== undefined ? { headSha: identity.headSha } : {}),
+              }
+            : null,
+          create: section !== undefined || (wasDraft && title !== undefined),
+          ...(section ? { section } : {}),
+        })
+      : null
 
     payload = {
       entryId: id,
       title: title ?? entry.description,
       projectId: project?.id ?? entry.projectId,
       projectName: project?.name ?? null,
-      noteRecorded: notePath !== undefined,
-      wasDraft: entry.description.trim().length === 0,
+      docPath: recorded?.path ?? null,
+      renamedFrom: recorded?.renamedFrom ?? null,
+      wasDraft,
     }
   } finally {
     ctx.db.close()
@@ -127,6 +150,7 @@ export async function runAmend(argv: string[]): Promise<number> {
   writeOut(`Amended #${payload.entryId}`)
   if (title !== undefined) writeOut(`Title   : ${payload.title}`)
   if (payload.projectName) writeOut(`Project : ${payload.projectName} (${payload.projectId})`)
-  if (payload.noteRecorded) writeOut('Note    : recorded')
+  if (payload.docPath) writeOut(`Document: ${payload.docPath}`)
+  if (payload.renamedFrom) writeOut(`Moved   : it was ${payload.renamedFrom}`)
   return 0
 }

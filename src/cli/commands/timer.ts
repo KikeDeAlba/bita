@@ -25,7 +25,10 @@ import {
 } from '../../db/entries.ts'
 import { findProjectByName, listProjects } from '../../db/projects.ts'
 import type { EntryWithProjectRow } from '../../db/rows.ts'
-import { appendNote, parseNoteInput, type NoteSource } from '../../state/notes.ts'
+import type { NoteSource } from '../../state/notes.ts'
+import { findEntryWithProject } from '../../db/entries.ts'
+import { recordEntryDoc } from '../../docs/record.ts'
+import { recordTouch } from '../../db/touches.ts'
 import { readConfig, setScopeMapping } from '../../state/config.ts'
 import { currentRepoIdentity } from './repo.ts'
 import { resolveMappedProject } from '../resolve-project.ts'
@@ -35,6 +38,8 @@ const TIMER_OPTIONS = {
   project: { type: 'string' as const },
   'note-json': { type: 'string' as const },
   'note-file': { type: 'string' as const },
+  'note-md': { type: 'string' as const },
+  section: { type: 'string' as const },
   file: { type: 'string' as const, multiple: true },
   command: { type: 'string' as const, multiple: true },
   resource: { type: 'string' as const, multiple: true },
@@ -115,53 +120,77 @@ async function resolveProjectId(
   return projectId
 }
 
-async function loadNoteBody(args: ParsedArgs): Promise<Record<string, unknown> | null> {
+interface DocSeed {
+  heading: string
+  body: string
+}
+
+async function loadDocSeed(args: ParsedArgs): Promise<DocSeed | null> {
+  const markdownPath = readString(args, 'note-md')
   const jsonPath = readString(args, 'note-json')
   const filePath = readString(args, 'note-file')
-  const files = readStringList(args, 'file')
-  const commands = readStringList(args, 'command')
-  const resources = readStringList(args, 'resource')
+
+  if (markdownPath) {
+    return { heading: readString(args, 'section') ?? 'Qué se hizo', body: await readSeedFile(markdownPath) }
+  }
+
+  if (filePath) return { heading: 'Qué se hizo', body: await readSeedFile(filePath) }
 
   if (jsonPath) {
+    let raw: unknown
     try {
-      return JSON.parse(await readFile(jsonPath, 'utf8')) as Record<string, unknown>
+      raw = JSON.parse(await readFile(jsonPath, 'utf8')) as unknown
     } catch (error) {
       throw new UsageError(`Could not read the note at ${jsonPath}: ${String(error)}`)
     }
-  }
-
-  if (filePath || files.length > 0 || commands.length > 0 || resources.length > 0) {
-    const body = filePath ? await readFile(filePath, 'utf8') : ''
-    return { body, artifacts: { files, commands, resources } }
+    const body = (raw as { body?: unknown })?.body
+    if (typeof body !== 'string') throw new UsageError('The note needs a "body" string.')
+    return { heading: 'Resumen', body }
   }
 
   return null
 }
 
-async function recordNote(
-  entry: { id: number; description: string },
-  raw: Record<string, unknown> | null,
+async function readSeedFile(path: string): Promise<string> {
+  try {
+    return await readFile(path, 'utf8')
+  } catch (error) {
+    throw new UsageError(`Could not read ${path}: ${String(error)}`)
+  }
+}
+
+async function repoIdentity() {
+  const found = await currentRepoIdentity()
+  if (!found) return null
+  return {
+    slug: found.slug,
+    ...(found.branch !== undefined ? { branch: found.branch } : {}),
+    ...(found.headSha !== undefined ? { headSha: found.headSha } : {}),
+  }
+}
+
+async function recordDoc(
+  ctx: LocalContext,
+  entryId: number,
+  seed: DocSeed | null,
   source: NoteSource,
-): Promise<boolean> {
-  if (!raw) return false
-  const identity = await currentRepoIdentity()
-  const note = parseNoteInput(raw, {
-    entryId: entry.id,
+  create: boolean,
+): Promise<string | null> {
+  const entry = findEntryWithProject(ctx.db, entryId)
+  if (!entry) return null
+
+  const recorded = await recordEntryDoc(ctx, entry, {
     source,
-    title: entry.description,
-    recordedAt: new Date().toISOString(),
-    ...(identity
-      ? {
-          repo: {
-            slug: identity.slug,
-            ...(identity.branch !== undefined ? { branch: identity.branch } : {}),
-            ...(identity.headSha !== undefined ? { headSha: identity.headSha } : {}),
-          },
-        }
-      : {}),
+    identity: await repoIdentity(),
+    create,
+    ...(seed ? { section: seed } : {}),
   })
-  await appendNote(note)
-  return true
+  return recorded?.path ?? null
+}
+
+function recordArtifacts(ctx: LocalContext, entryId: number, args: ParsedArgs): void {
+  const now = ctx.now.toISOString()
+  for (const file of readStringList(args, 'file')) recordTouch(ctx.db, entryId, file, now)
 }
 
 export async function runStart(argv: string[]): Promise<number> {
@@ -187,6 +216,7 @@ export async function runStart(argv: string[]): Promise<number> {
 
     const row = listRunning(ctx.db).find((entry) => entry.id === created.id)
     const enriched = row ? enrich(ctx, row) : null
+    const docPath = isDraft ? null : await recordDoc(ctx, created.id, null, 'start', true)
 
     if (json) {
       writeJson(
@@ -197,12 +227,14 @@ export async function runStart(argv: string[]): Promise<number> {
           })),
           runningCount: countRunning(ctx.db),
           draft: isDraft,
+          docPath,
         }),
       )
     } else {
       writeOut(isDraft ? `Started #${created.id}, still a draft` : `Started #${created.id}: ${title}`)
       if (enriched?.projectName) writeOut(`Project : ${enriched.projectName}`)
       writeOut(`Since   : ${enriched?.startLocal.slice(11, 16) ?? ''}`)
+      if (docPath) writeOut(`Document: ${docPath}`)
       if (isDraft) {
         writeOut('')
         writeOut('It has no title yet, so it stays out of any Jira summary.')
@@ -240,14 +272,16 @@ export async function runStop(argv: string[]): Promise<number> {
     const targets = await chooseTargets(ctx, args, running, json)
     const at = readString(args, 'at')
     const stoppedAt = at === undefined ? ctx.now.toISOString() : parseClockTime(at, ctx.now, '--at').toISOString()
-    const noteBody = await loadNoteBody(args)
+    const seed = await loadDocSeed(args)
 
     const stopped: EnrichedTimeEntry[] = []
+    let docPath: string | null = null
     for (const target of targets) {
       const snapshot = enrich(ctx, { ...target, stoppedAt })
       stopEntry(ctx.db, target.id, stoppedAt, ctx.now.toISOString())
       if (targets.length === 1) {
-        await recordNote({ id: target.id, description: target.description }, noteBody, 'stop')
+        recordArtifacts(ctx, target.id, args)
+        docPath = await recordDoc(ctx, target.id, seed, 'stop', seed !== null)
       }
       stopped.push(snapshot)
     }
@@ -257,13 +291,14 @@ export async function runStop(argv: string[]): Promise<number> {
         successEnvelope('stop', stopped, {
           stopped: stopped.length,
           stillRunning: countRunning(ctx.db),
-          noteRecorded: targets.length === 1 && noteBody !== null,
+          docPath,
         }),
       )
     } else {
       for (const entry of stopped) {
         writeOut(`Stopped #${entry.id}: ${entry.description} (${entry.durationHuman})`)
       }
+      if (docPath) writeOut(`Document: ${docPath}`)
       const left = countRunning(ctx.db)
       if (left > 0) writeOut(`${left} still running.`)
     }
@@ -443,19 +478,18 @@ export async function runLog(argv: string[]): Promise<number> {
       now: ctx.now.toISOString(),
     })
 
-    await recordNote(
-      { id: created.id, description: created.description },
-      await loadNoteBody(args),
-      'log',
-    )
+    const seed = await loadDocSeed(args)
+    recordArtifacts(ctx, created.id, args)
+    const docPath = await recordDoc(ctx, created.id, seed, 'log', seed !== null)
 
     const row = findEntryById(ctx.db, created.id)
     const seconds = row ? Math.round((Date.parse(stoppedAt) - Date.parse(startedAt)) / 1000) : 0
 
     if (json) {
-      writeJson(successEnvelope('log', { ...created, durationSeconds: seconds }))
+      writeJson(successEnvelope('log', { ...created, durationSeconds: seconds }, { docPath }))
     } else {
       writeOut(`Logged #${created.id}: ${title} (${formatDuration(seconds)})`)
+      if (docPath) writeOut(`Document: ${docPath}`)
     }
     return 0
   } finally {
