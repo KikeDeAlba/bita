@@ -7,6 +7,7 @@ import { renderTable } from '../table.ts'
 import { successEnvelope, writeErr, writeJson, writeOut } from '../output.ts'
 import { MAX_TASK_SECONDS } from '../../config/constants.ts'
 import { NOTES_PATH, readNotesByEntryId } from '../../state/notes.ts'
+import { touchesByEntry } from '../../db/touches.ts'
 import { readConfig, storyThemes } from '../../state/config.ts'
 
 export async function runSummary(argv: string[]): Promise<number> {
@@ -43,7 +44,12 @@ export async function runSummary(argv: string[]): Promise<number> {
     const notesById = readBoolean(args, 'no-notes')
       ? new Map()
       : await readNotesByEntryId(allEntryIds)
-    const missingNotes = allEntryIds.filter((id) => !notesById.has(id))
+    const touchedById = readBoolean(args, 'no-notes')
+      ? new Map<number, string[]>()
+      : touchesByEntry(ctx.db, allEntryIds)
+    const missingNotes = allEntryIds.filter(
+      (id) => !notesById.has(id) && (touchedById.get(id)?.length ?? 0) === 0,
+    )
 
     const withMapping = groups.map((group) => {
       const mapping =
@@ -62,6 +68,9 @@ export async function runSummary(argv: string[]): Promise<number> {
         jiraWorkIssueTypeName: mapping?.workIssueTypeName ?? 'Subtarea',
         jiraIssueTypeName: mapping?.issueTypeName ?? config.defaults?.issueTypeName ?? null,
         notes: group.entryIds.map((id) => notesById.get(id)).filter((note) => note !== undefined),
+        touchedFiles: [
+          ...new Set(group.entryIds.flatMap((id) => touchedById.get(id) ?? [])),
+        ],
         noteCoverage: {
           withNote: group.entryIds.filter((id) => notesById.has(id)).length,
           withoutNote: group.entryIds.filter((id) => !notesById.has(id)).length,

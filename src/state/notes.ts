@@ -124,6 +124,10 @@ export async function readNotes(notesPath = NOTES_PATH): Promise<EntryNote[]> {
   return notes
 }
 
+function union(previous: string[], next: string[]): string[] {
+  return [...new Set([...previous, ...next])]
+}
+
 export async function readNotesByEntryId(
   ids: number[],
   notesPath = NOTES_PATH,
@@ -134,11 +138,20 @@ export async function readNotesByEntryId(
   for (const note of await readNotes(notesPath)) {
     if (!wanted.has(note.entryId)) continue
     const previous = latest.get(note.entryId)
-    const merged =
-      previous && note.body.length === 0 && previous.body.length > 0
-        ? { ...note, body: previous.body }
-        : note
-    latest.set(note.entryId, merged)
+    if (!previous) {
+      latest.set(note.entryId, note)
+      continue
+    }
+
+    latest.set(note.entryId, {
+      ...note,
+      body: note.body.length === 0 ? previous.body : note.body,
+      artifacts: {
+        files: union(previous.artifacts.files, note.artifacts.files),
+        commands: union(previous.artifacts.commands, note.artifacts.commands),
+        resources: union(previous.artifacts.resources, note.artifacts.resources),
+      },
+    })
   }
 
   return latest

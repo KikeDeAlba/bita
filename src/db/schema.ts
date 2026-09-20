@@ -89,7 +89,20 @@ const INITIAL_SCHEMA: readonly string[] = [
    )`,
 ]
 
-export const MIGRATIONS: readonly Migration[] = [{ version: 1, statements: INITIAL_SCHEMA }]
+const ENTRY_TOUCHES: readonly string[] = [
+  `CREATE TABLE entry_touches (
+     entry_id INTEGER NOT NULL REFERENCES entries (id) ON DELETE CASCADE,
+     path TEXT NOT NULL,
+     first_seen_at TEXT NOT NULL,
+     PRIMARY KEY (entry_id, path)
+   )`,
+  `CREATE INDEX entry_touches_entry ON entry_touches (entry_id)`,
+]
+
+export const MIGRATIONS: readonly Migration[] = [
+  { version: 1, statements: INITIAL_SCHEMA },
+  { version: 2, statements: ENTRY_TOUCHES },
+]
 
 export const LATEST_VERSION = MIGRATIONS.reduce(
   (highest, migration) => Math.max(highest, migration.version),

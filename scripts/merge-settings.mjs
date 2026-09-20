@@ -20,14 +20,41 @@ const ALLOW = [
   'Bash(bita config get:*)',
   'Bash(bita config set-jira:*)',
   'Bash(bita hook:*)',
+  'Bash(bita amend:*)',
+  'Bash(bita scope list:*)',
+  'Bash(bita scope set:*)',
+  'Bash(bita scope unset:*)',
+  'Bash(bita scope which:*)',
   'Bash(bita --version)',
 ]
 
 const ASK = ['Bash(bita cancel:*)']
 
-const HOOK = {
+const SESSION_START_HOOK = {
   matcher: 'startup|resume|clear|compact',
   hooks: [{ type: 'command', command: 'bita hook session-start', timeout: 5 }],
+}
+
+const PROMPT_SUBMIT_HOOK = {
+  hooks: [{ type: 'command', command: 'bita hook prompt-submit', timeout: 5 }],
+}
+
+const TOUCHED_HOOK = {
+  matcher: 'Edit|Write',
+  hooks: [
+    {
+      type: 'command',
+      command:
+        'jq -r \'.tool_input.file_path // empty\' | { read -r f; [ -n "$f" ] && bita hook touched --file "$f"; } 2>/dev/null || true',
+      timeout: 10,
+    },
+  ],
+}
+
+const EVENT_HOOKS = {
+  SessionStart: SESSION_START_HOOK,
+  UserPromptSubmit: PROMPT_SUBMIT_HOOK,
+  PostToolUse: TOUCHED_HOOK,
 }
 
 const path = process.argv[2]
@@ -35,7 +62,14 @@ const path = process.argv[2]
 function printManualBlock() {
   console.log('  Add this to your settings.json by hand:')
   console.log(
-    JSON.stringify({ permissions: { allow: ALLOW, ask: ASK }, hooks: { SessionStart: [HOOK] } }, null, 2)
+    JSON.stringify(
+      {
+        permissions: { allow: ALLOW, ask: ASK },
+        hooks: Object.fromEntries(Object.entries(EVENT_HOOKS).map(([event, hook]) => [event, [hook]])),
+      },
+      null,
+      2,
+    )
       .split('\n')
       .map((line) => `    ${line}`)
       .join('\n'),
@@ -69,15 +103,22 @@ const addedAsk = ASK.filter((rule) => !settings.permissions.ask.includes(rule))
 settings.permissions.ask.push(...addedAsk)
 
 settings.hooks ??= {}
-settings.hooks.SessionStart ??= []
 
-const alreadyHooked = settings.hooks.SessionStart.some((entry) =>
-  (entry.hooks ?? []).some((hook) => hook.command === HOOK.hooks[0].command),
-)
-if (!alreadyHooked) settings.hooks.SessionStart.push(HOOK)
+const addedHooks = []
+for (const [event, hook] of Object.entries(EVENT_HOOKS)) {
+  settings.hooks[event] ??= []
+  const command = hook.hooks[0].command
+  const present = settings.hooks[event].some((entry) =>
+    (entry.hooks ?? []).some((candidate) => candidate.command === command),
+  )
+  if (!present) {
+    settings.hooks[event].push(hook)
+    addedHooks.push(event)
+  }
+}
 
 writeFileSync(path, `${JSON.stringify(settings, null, 2)}\n`)
 
 console.log(`  backed up to ${path}.backup`)
 console.log(`  permissions: ${addedAllow.length} added to allow, ${addedAsk.length} to ask`)
-console.log(`  SessionStart hook: ${alreadyHooked ? 'already there' : 'added'}`)
+console.log(`  hooks: ${addedHooks.length === 0 ? 'all already there' : `added ${addedHooks.join(', ')}`}`)
