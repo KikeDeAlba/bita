@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { openDatabase } from '../db/open.ts'
 import { databasePath } from '../db/paths.ts'
+import { docsRoot } from '../docs/paths.ts'
 import { resolveBeginningOfWeek, resolveTimezone } from '../db/settings.ts'
 import { readString, type ParsedArgs } from './args.ts'
 
@@ -10,6 +11,7 @@ export interface LocalContext {
   beginningOfWeek: number
   now: Date
   databasePath: string
+  docsRoot: string
 }
 
 export function createLocalContext(args: ParsedArgs): LocalContext {
@@ -21,6 +23,7 @@ export function createLocalContext(args: ParsedArgs): LocalContext {
     beginningOfWeek: resolveBeginningOfWeek(db),
     now: new Date(),
     databasePath: path,
+    docsRoot: readString(args, 'docs-dir') ?? docsRoot(process.env, path),
   }
 }
 

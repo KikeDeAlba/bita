@@ -10,6 +10,7 @@ export const BASE_OPTIONS: OptionConfig = {
   workspace: { type: 'string' },
   timezone: { type: 'string' },
   'db-path': { type: 'string' },
+  'docs-dir': { type: 'string' },
   'no-cache': { type: 'boolean', default: false },
   offline: { type: 'boolean', default: false },
   verbose: { type: 'boolean', default: false },
