@@ -6,6 +6,14 @@ export interface DocSection {
   body: string
 }
 
+export type SectionState = 'written' | 'empty' | 'absent'
+
+export interface DocSectionState {
+  heading: string
+  state: SectionState
+  canonical: boolean
+}
+
 export interface ParsedDocument {
   frontMatter: Map<string, string>
   frontMatterValid: boolean
@@ -160,6 +168,26 @@ export function documentBody(doc: ParsedDocument): string {
 
 export function filledSections(doc: ParsedDocument): string[] {
   return doc.sections.filter((section) => section.body.length > 0).map((section) => section.heading)
+}
+
+export function sectionStates(doc: ParsedDocument): DocSectionState[] {
+  const seen = new Map<string, DocSection>()
+  for (const section of doc.sections) {
+    if (!seen.has(section.heading)) seen.set(section.heading, section)
+  }
+
+  const states: DocSectionState[] = DOC_SECTIONS.map((heading) => {
+    const section = seen.get(heading)
+    if (!section) return { heading, state: 'absent', canonical: true }
+    return { heading, state: section.body.length > 0 ? 'written' : 'empty', canonical: true }
+  })
+
+  for (const [heading, section] of seen) {
+    if (DOC_SECTIONS.includes(heading)) continue
+    states.push({ heading, state: section.body.length > 0 ? 'written' : 'empty', canonical: false })
+  }
+
+  return states
 }
 
 export function checksumOf(contents: string): string {
