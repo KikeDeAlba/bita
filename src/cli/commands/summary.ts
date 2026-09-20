@@ -1,4 +1,4 @@
-import { parseCommandArgs, readBoolean, readInteger } from '../args.ts'
+import { parseCommandArgs, readBoolean, readInteger, readString } from '../args.ts'
 import { createLocalContext } from '../local-context.ts'
 import { collectEntries } from '../collect.ts'
 import { groupEntries } from '../../domain/group.ts'
@@ -6,7 +6,9 @@ import { formatDuration } from '../../domain/duration.ts'
 import { renderTable } from '../table.ts'
 import { successEnvelope, writeErr, writeJson, writeOut } from '../output.ts'
 import { MAX_TASK_SECONDS } from '../../config/constants.ts'
-import { NOTES_PATH, readNotesByEntryId } from '../../state/notes.ts'
+import { NOTES_PATH } from '../../state/notes.ts'
+import { docsByEntry } from '../../db/docs.ts'
+import { loadSummaryDocs, parseNotesMode } from '../../docs/read.ts'
 import { touchesByEntry } from '../../db/touches.ts'
 import { readConfig, storyThemes } from '../../state/config.ts'
 
@@ -16,6 +18,8 @@ export async function runSummary(argv: string[]): Promise<number> {
     'max-task-hours': { type: 'string' },
     'estimate-step-minutes': { type: 'string' },
     'no-notes': { type: 'boolean', default: false },
+    'notes-mode': { type: 'string' },
+    'notes-budget-kb': { type: 'string' },
   })
 
   const ctx = createLocalContext(args)
@@ -41,14 +45,22 @@ export async function runSummary(argv: string[]): Promise<number> {
     })
 
     const allEntryIds = groups.flatMap((group) => group.entryIds)
-    const notesById = readBoolean(args, 'no-notes')
-      ? new Map()
-      : await readNotesByEntryId(allEntryIds)
-    const touchedById = readBoolean(args, 'no-notes')
+    const skipNotes = readBoolean(args, 'no-notes')
+    const budgetKb = readInteger(args, 'notes-budget-kb')
+
+    const docRows = skipNotes ? new Map() : docsByEntry(ctx.db, allEntryIds)
+    const loaded = skipNotes
+      ? { byEntry: new Map(), inlinedBytes: 0, truncatedEntryIds: [], missingFiles: [] }
+      : await loadSummaryDocs(ctx.docsRoot, docRows, {
+          mode: parseNotesMode(readString(args, 'notes-mode')),
+          ...(budgetKb === undefined ? {} : { budgetBytes: budgetKb * 1024 }),
+        })
+
+    const touchedById = skipNotes
       ? new Map<number, string[]>()
       : touchesByEntry(ctx.db, allEntryIds)
     const missingNotes = allEntryIds.filter(
-      (id) => !notesById.has(id) && (touchedById.get(id)?.length ?? 0) === 0,
+      (id) => !loaded.byEntry.has(id) && (touchedById.get(id)?.length ?? 0) === 0,
     )
 
     const withMapping = groups.map((group) => {
@@ -67,13 +79,13 @@ export async function runSummary(argv: string[]): Promise<number> {
         jiraStoryIssueTypeName: mapping?.storyIssueTypeName ?? 'Historia',
         jiraWorkIssueTypeName: mapping?.workIssueTypeName ?? 'Subtarea',
         jiraIssueTypeName: mapping?.issueTypeName ?? config.defaults?.issueTypeName ?? null,
-        notes: group.entryIds.map((id) => notesById.get(id)).filter((note) => note !== undefined),
+        docs: group.entryIds.flatMap((id) => loaded.byEntry.get(id) ?? []),
         touchedFiles: [
           ...new Set(group.entryIds.flatMap((id) => touchedById.get(id) ?? [])),
         ],
         noteCoverage: {
-          withNote: group.entryIds.filter((id) => notesById.has(id)).length,
-          withoutNote: group.entryIds.filter((id) => !notesById.has(id)).length,
+          withNote: group.entryIds.filter((id) => loaded.byEntry.has(id)).length,
+          withoutNote: group.entryIds.filter((id) => !loaded.byEntry.has(id)).length,
         },
       }
     })
@@ -119,7 +131,15 @@ export async function runSummary(argv: string[]): Promise<number> {
             alreadyRegistered: result.alreadyRegistered,
             overlaps: result.overlaps,
             unmappedProjects,
-            notes: { path: NOTES_PATH, matched: notesById.size, missing: missingNotes },
+            notes: {
+              root: ctx.docsRoot,
+              matched: loaded.byEntry.size,
+              missing: missingNotes,
+              missingFiles: loaded.missingFiles,
+              inlinedBytes: loaded.inlinedBytes,
+              truncatedEntryIds: loaded.truncatedEntryIds,
+              legacyPath: NOTES_PATH,
+            },
             warnings: result.warnings,
           },
         ),

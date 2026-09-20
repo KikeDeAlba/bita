@@ -67,7 +67,9 @@ Summary options:
   --max-task-hours N         Cap per task before splitting (default 8)
   --estimate-step-minutes N  Round the original estimate up to this step (default 30)
   --case-insensitive         Group descriptions ignoring case and accents
-  --no-notes                 Skip the rich notes
+  --no-notes                 Skip the documents altogether
+  --notes-mode MODE          inline, path or both (default: both)
+  --notes-budget-kb N        Stop inlining documents past this much (default: 256)
 
 Timer options:
   --project ID|NAME          Project; otherwise inferred from the repository
