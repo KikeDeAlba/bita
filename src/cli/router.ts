@@ -7,6 +7,7 @@ import { runConfig } from './commands/config.ts'
 import { runRepo } from './commands/repo.ts'
 import { runNote } from './commands/note.ts'
 import { runHook } from './commands/hook.ts'
+import { runLink } from './commands/link.ts'
 import { runCancel, runCurrent, runLog, runStart, runStop } from './commands/timer.ts'
 import { writeOut } from './output.ts'
 
@@ -23,6 +24,7 @@ Tracking:
   cancel [id]                Discard a running timer without recording it
   log "<title>"              Record a block that already happened
   note get|set <entryId>     Read or attach the rich note of an entry
+  link <ids...> --issue K    Mark entries as registered in a Jira issue
 
 Reporting:
   entries [preset]           List time entries
@@ -67,6 +69,11 @@ Log options:
   --to HH:MM                 When it ended
   --for 1h30m                How long it lasted, instead of --to
 
+Link options:
+  --issue KEY                The Jira issue the entries were written to
+  --ids A,B,C                Entry ids, as an alternative to positionals
+  --unlink                   Undo the link, putting the entries back to pending
+
 Note options:
   --note-json FILE           Rich note as JSON (summary plus what was touched)
   --note-file FILE           Rich note body as plain text
@@ -109,6 +116,8 @@ export async function route(argv: string[]): Promise<number> {
       return runNote(rest)
     case 'hook':
       return runHook(rest)
+    case 'link':
+      return runLink(rest)
     case 'start':
       return runStart(rest)
     case 'stop':
