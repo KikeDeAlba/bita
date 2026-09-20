@@ -1,7 +1,7 @@
 ---
 description: Rellena el título, el proyecto o la nota de un cronómetro
 argument-hint: [id, o vacío para el borrador en curso]
-allowed-tools: Bash(bita amend:*), Bash(bita ls:*), Bash(bita projects:*), Bash(bita repo show:*), Bash(bita scope list:*), Write
+allowed-tools: Bash(bita amend:*), Bash(bita ls:*), Bash(bita note:*), Bash(bita projects:*), Bash(bita repo show:*), Bash(bita scope list:*), Read, Write, Edit
 ---
 
 Corriendo ahora:
@@ -28,19 +28,24 @@ bita amend --draft --title "<titulo>" --project <nombre o id>
 bita amend <id> --title "<titulo>"
 ```
 
-**La descripción**, si ya hay material para escribirla, va en un archivo y se
-adjunta. Los archivos que se tocaron se registran solos, así que no los repitas:
+Al titular un borrador, el documento de la entrada nace y se mueve a su nombre
+definitivo. Es el único momento en que cambia de ruta: a partir de ahí el título
+vive dentro del archivo y el archivo ya no se mueve.
+
+**La descripción no va aquí.** Vive en el documento, y se escribe por
+checkpoints mientras el trabajo pasa: para eso está `/bita-check`. `amend` es
+para los metadatos —título y proyecto— y para corregir un hecho que resultó
+falso. Los archivos que se tocaron se registran solos, así que no los repitas:
 concéntrate en el porqué.
 
-```json
-{ "body": "Resumen en prosa de qué se hizo y por qué, 2-4 frases." }
-```
+Si hay que corregir algo del documento, léelo y edítalo en su sitio:
 
 ```
-bita amend <id> --note-json /tmp/bita-note.json
+bita note path <id>
+bita note save <id>
 ```
 
-Antes de escribirla, revisa que no lleve secretos ni rutas internas: acaba en un
+Antes de guardar, revisa que no lleve secretos ni rutas internas: acaba en un
 issue de Jira que verán otros.
 
 Responde en una línea con lo que quedó.
