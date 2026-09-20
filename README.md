@@ -27,18 +27,96 @@ Quedan dos ventajas que no se buscaban:
 
 ## Requisitos
 
-Node 24 o superior, por `node:sqlite` y por el borrado de tipos nativo. No hay
-dependencias de runtime ni paso de compilación.
+**Node 24 o superior.** No es negociable: bita usa `node:sqlite` y el borrado de
+tipos nativo, así que corre los `.ts` sin compilar. No hay dependencias de
+runtime, ni bundler, ni paso de build.
+
+```sh
+node -v    # debe decir v24 o más
+```
 
 ## Instalación
 
+### 1. Clonar e instalar
+
 ```sh
+git clone git@github.com:KikeDeAlba/bita.git
+cd bita
 pnpm install
-pnpm link --global
 ```
 
-La base vive en `~/.local/share/bita/bita.db`. Se crea sola al primer uso, y
-`BITA_DB_PATH` la mueve a otro sitio.
+Las únicas dependencias son TypeScript y `@types/node`, y solo para el
+`typecheck`.
+
+### 2. Correr el instalador
+
+```sh
+./scripts/install.sh
+```
+
+Hace cuatro cosas, y todas son idempotentes: puedes volver a correrlo cuando
+quieras.
+
+| Paso | Qué hace |
+|---|---|
+| Binario | Enlaza `bita` en tu directorio de binarios (`$PNPM_HOME/bin`, o `~/.local/bin`) |
+| Skill | `~/.claude/skills/bita` → `skill/` del repo |
+| Comandos | `~/.claude/commands/bita-*.md` → `commands/` del repo |
+| Settings | Añade los permisos y el hook `SessionStart` a `~/.claude/settings.json` |
+
+Todo son **symlinks al repo**, a propósito: cuando actualizas el repo, la skill y
+los comandos se actualizan contigo, y un cambio de flag en el CLI viaja en el
+mismo commit que su documentación.
+
+Antes de tocar `settings.json` deja una copia en `settings.json.backup`, y si no
+lo puede parsear no lo escribe: imprime el bloque para que lo pegues a mano.
+
+Si tu directorio de binarios está en otro sitio:
+
+```sh
+BITA_BIN_DIR=~/bin ./scripts/install.sh
+```
+
+### 3. Comprobar
+
+```sh
+bita --version
+bita projects
+```
+
+La base se crea sola en `~/.local/share/bita/bita.db` al primer uso. `BITA_DB_PATH`
+la mueve a otro sitio, que es también la forma de probar cosas sin tocar la real.
+
+### 4. Crear un proyecto y mapear el repositorio
+
+Esto es lo que enciende la integración con Claude:
+
+```sh
+bita project add "Mi proyecto"     # devuelve un id
+cd ~/ruta/al/repositorio
+bita repo set . <projectId>
+```
+
+**Mientras un repositorio no esté mapeado, el hook no dice nada.** En cuanto lo
+está, al abrir una sesión de Claude Code en él se inyecta la regla que le pide
+ofrecer el cronómetro cuando el trabajo vaya a dejar un artefacto —un commit, un
+archivo, un despliegue— y callarse cuando solo vayas a leer o preguntar.
+
+El mapeo se guarda por el **slug** del repositorio, que sale del remoto de git
+(`github.com/kikedealba/bita`), así que sobrevive a que muevas la carpeta.
+
+Reabre la sesión de Claude Code para que cargue el hook, la skill y los comandos.
+
+### 5. Conectar Jira
+
+Jira no se toca desde el CLI: lo escribe Claude por el conector de Atlassian. Lo
+único que se guarda aquí es a qué tablero va cada proyecto, y se pregunta solo la
+primera vez:
+
+```sh
+bita map set <projectId> <JIRAKEY> --parent <JIRAKEY-123>
+bita map list
+```
 
 ## Uso
 
