@@ -4,6 +4,9 @@ import { databasePath } from '../../db/paths.ts'
 import { resolveTimezone } from '../../db/settings.ts'
 import { listRunning, listRunningDrafts } from '../../db/entries.ts'
 import { runTouched } from '../hooks/touched.ts'
+import { checkpointStatus } from '../../db/docs.ts'
+import { CHECKPOINT_STALE_MINUTES, CHECKPOINT_TOUCH_THRESHOLD } from '../../config/constants.ts'
+import { formatDuration } from '../../domain/duration.ts'
 import { enrichEntry } from '../../domain/enrich.ts'
 import { currentRepoIdentity } from './repo.ts'
 import { resolveMappedProject } from '../resolve-project.ts'
@@ -16,8 +19,12 @@ const RULE = [
   '  bita start "<titulo corto>"',
   'No lo propongas para preguntas, lecturas, busquedas ni arreglos de una linea.',
   'Pueden correr varios cronometros a la vez: si empiezas algo distinto, arranca otro en vez de',
-  'parar el que hay. Al terminar, escribe la nota rica (resumen y lo que se toco) y para:',
-  '  bita stop <id> --note-json <archivo>',
+  'parar el que hay.',
+  'Cada cronometro tiene su documento en markdown, y se escribe MIENTRAS se trabaja, no al final:',
+  '  bita note path <id> --create   -> la ruta; editala con Read/Edit',
+  '  bita note save <id>            -> registrala cuando la hayas editado',
+  'Escribe un checkpoint al cerrar un paso, al terminar una verificacion, al cambiar de enfoque o',
+  'al encontrar algo no obvio. Al terminar, cierra el documento y para con: bita stop <id>',
 ].join('\n')
 
 async function runPromptSubmit(): Promise<number> {
@@ -58,8 +65,77 @@ async function runPromptSubmit(): Promise<number> {
   return 0
 }
 
+function runCheckpoint(): number {
+  const db = openDatabase(databasePath())
+  try {
+    const now = new Date()
+    const timezone = resolveTimezone(db)
+    const running = listRunning(db).filter((entry) => entry.description.trim().length > 0)
+    if (running.length === 0) return 0
+
+    const status = checkpointStatus(
+      db,
+      running.map((entry) => entry.id),
+    )
+
+    const stale = running.filter((entry) => {
+      const state = status.get(entry.id)
+      if (!state) return false
+      if (state.touchedSinceNote >= CHECKPOINT_TOUCH_THRESHOLD) return true
+      const since = state.lastNoteAt ?? entry.startedAt
+      return now.getTime() - Date.parse(since) >= CHECKPOINT_STALE_MINUTES * 60_000
+    })
+
+    if (stale.length === 0) return 0
+
+    const lines = stale.map((entry) => {
+      const state = status.get(entry.id)
+      const since = state?.lastNoteAt ?? entry.startedAt
+      const elapsed = formatDuration(Math.round((now.getTime() - Date.parse(since)) / 1000))
+      const touched = state?.touchedSinceNote ?? 0
+      const files = touched === 1 ? '1 archivo tocado' : `${touched} archivos tocados`
+      const enriched = enrichEntry(entry, timezone, now)
+      return `  #${entry.id} "${enriched.description}" lleva ${elapsed} y ${files} desde el ultimo checkpoint`
+    })
+
+    const first = stale[0]
+    const additionalContext = [
+      'Registro de tiempo (bita): hay trabajo sin documentar en un cronometro que corre.',
+      ...lines,
+      '',
+      'Si acabas de cerrar un paso, terminar una verificacion, cambiar de enfoque o encontrar algo',
+      'no obvio, escribe el checkpoint AHORA en el documento de la entrada:',
+      `  bita note path ${first?.id ?? '<id>'}   -> la ruta del documento`,
+      `  bita note save ${first?.id ?? '<id>'}   -> cuando lo hayas editado`,
+      '',
+      'Una a tres vinetas, y a la seccion que toque: un hallazgo va a Hallazgos, no a Que se hizo.',
+      'Documenta el resultado, no la edicion; los archivos tocados ya se registran solos.',
+      'Si no hay nada que valga la pena contar, sigue sin escribir nada.',
+      'Escribelo como documentacion tecnica: nada de "se acordo con el usuario", "segun lo',
+      'solicitado" ni primera persona. Esto acaba en un issue de Jira que leeran otros.',
+    ].join('\n')
+
+    process.stdout.write(
+      `${JSON.stringify({
+        hookSpecificOutput: { hookEventName: 'UserPromptSubmit', additionalContext },
+      })}\n`,
+    )
+  } finally {
+    db.close()
+  }
+  return 0
+}
+
 export async function runHook(argv: string[]): Promise<number> {
   const event = argv[0] ?? 'session-start'
+
+  if (event === 'checkpoint') {
+    try {
+      return runCheckpoint()
+    } catch {
+      return 0
+    }
+  }
 
   if (event === 'prompt-submit') {
     try {

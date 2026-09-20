@@ -27,6 +27,7 @@ bita amend --draft --title "<titulo corto>" --project <nombre o id>
 ```
 
 El hook `prompt-submit` te lo va a recordar en cada turno hasta que lo hagas.
+El documento de la entrada nace ahí, en ese mismo `amend`, no ahora.
 
 **Si `$ARGUMENTS` trae texto**, úsalo literal como título, sin reescribirlo, y
 arranca con él:
@@ -35,9 +36,14 @@ arranca con él:
 bita start "<título>"
 ```
 
+El comando crea también el documento de la entrada y devuelve su ruta. **No lo
+rellenes todavía**: se escribe por checkpoints, mientras el trabajo pasa, con
+`/bita-check`.
+
 En cualquiera de los dos casos, mira la lista de arriba antes: si ya hay un
 cronómetro con ese mismo título y proyecto, no arranques otro, dímelo. Si hay
 otros corriendo de otra cosa, arranca igual —bita admite varios a la vez— y
 menciónalo en una línea.
 
-Responde en una línea: el id, y el título o que quedó en blanco. Nada más.
+Responde en una línea: el id, el título o que quedó en blanco, y la ruta del
+documento si se creó. Nada más.

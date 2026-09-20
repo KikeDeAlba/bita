@@ -99,9 +99,36 @@ const ENTRY_TOUCHES: readonly string[] = [
   `CREATE INDEX entry_touches_entry ON entry_touches (entry_id)`,
 ]
 
+const ENTRY_DOCS: readonly string[] = [
+  `CREATE TABLE entry_docs (
+     entry_id INTEGER NOT NULL REFERENCES entries (id) ON DELETE CASCADE,
+     rel_path TEXT NOT NULL,
+     kind TEXT NOT NULL DEFAULT 'note',
+     title TEXT NOT NULL DEFAULT '',
+     title_slug TEXT NOT NULL DEFAULT '',
+     source TEXT NOT NULL,
+     section_count INTEGER NOT NULL DEFAULT 0,
+     byte_size INTEGER NOT NULL DEFAULT 0,
+     checksum TEXT NOT NULL DEFAULT '',
+     repo_slug TEXT,
+     branch TEXT,
+     head_sha TEXT,
+     created_at TEXT NOT NULL,
+     recorded_at TEXT NOT NULL,
+     PRIMARY KEY (entry_id, rel_path),
+     CHECK (kind IN ('note', 'appendix')),
+     CHECK (rel_path <> '' AND rel_path NOT LIKE '/%' AND rel_path NOT LIKE '%..%')
+   )`,
+  `CREATE UNIQUE INDEX entry_docs_path ON entry_docs (rel_path)`,
+  `CREATE INDEX entry_docs_entry ON entry_docs (entry_id, kind)`,
+  `CREATE INDEX entry_docs_recorded ON entry_docs (recorded_at)`,
+  `DROP TABLE notes`,
+]
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, statements: INITIAL_SCHEMA },
   { version: 2, statements: ENTRY_TOUCHES },
+  { version: 3, statements: ENTRY_DOCS },
 ]
 
 export const LATEST_VERSION = MIGRATIONS.reduce(
