@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { UsageError } from '../../http/errors.ts'
+import { UsageError } from '../../errors.ts'
 import { BASE_OPTIONS, parseCommandArgs, readBoolean, readString } from '../args.ts'
 import { appendNote, parseNoteInput, readNotesByEntryId } from '../../state/notes.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
@@ -11,7 +11,7 @@ export async function runNote(argv: string[]): Promise<number> {
   const json = readBoolean(args, 'json')
 
   const [rawId] = args.positionals
-  if (!rawId) throw new UsageError(`Usage: toggl note ${subcommand} <entryId>`)
+  if (!rawId) throw new UsageError(`Usage: bita note ${subcommand} <entryId>`)
   const entryId = Number(rawId)
   if (!Number.isInteger(entryId)) throw new UsageError(`Invalid entry id: "${rawId}".`)
 
@@ -35,7 +35,7 @@ export async function runNote(argv: string[]): Promise<number> {
 
   if (subcommand === 'set') {
     const notePath = readString(args, 'note-json')
-    if (!notePath) throw new UsageError('Usage: toggl note set <entryId> --note-json <file>')
+    if (!notePath) throw new UsageError('Usage: bita note set <entryId> --note-json <file>')
 
     let raw: unknown
     try {
@@ -47,7 +47,6 @@ export async function runNote(argv: string[]): Promise<number> {
     const config = await readConfig()
     const note = parseNoteInput(raw, {
       entryId,
-      workspaceId: config.workspaceId ?? 0,
       source: 'manual',
       title: '',
       recordedAt: new Date().toISOString(),

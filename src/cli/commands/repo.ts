@@ -1,7 +1,8 @@
 import os from 'node:os'
-import { UsageError } from '../../http/errors.ts'
+import { UsageError } from '../../errors.ts'
 import { parseCommandArgs, readBoolean, BASE_OPTIONS } from '../args.ts'
-import { createLeanContext } from '../lean-context.ts'
+import { createLocalContext } from '../local-context.ts'
+import { findProjectById } from '../../db/projects.ts'
 import { readRepoContext } from '../../state/git.ts'
 import { resolveRepoIdentity, type RepoIdentity } from '../../domain/repo.ts'
 import { readConfig, setRepoMapping, unsetRepoMapping } from '../../state/config.ts'
@@ -44,8 +45,8 @@ export async function runRepo(argv: string[]): Promise<number> {
     if (identity.branch) writeOut(`Branch  : ${identity.branch}`)
     writeOut(
       mapping
-        ? `Project : ${mapping.togglProjectName} (${mapping.togglProjectId})`
-        : `Project : not mapped. Run "toggl repo set . <togglProjectId>".`,
+        ? `Project : ${mapping.projectName} (${mapping.projectId})`
+        : `Project : not mapped. Run "toggl repo set . <projectId>".`,
     )
     return 0
   }
@@ -66,7 +67,7 @@ export async function runRepo(argv: string[]): Promise<number> {
     writeOut(
       renderTable(
         [{ header: 'REPOSITORY' }, { header: 'TOGGL PROJECT' }, { header: 'ID' }, { header: 'FROM' }],
-        rows.map((row) => [row.slug, row.togglProjectName, String(row.togglProjectId), row.slugSource]),
+        rows.map((row) => [row.slug, row.projectName, String(row.projectId), row.slugSource]),
       ),
     )
     return 0
@@ -75,7 +76,7 @@ export async function runRepo(argv: string[]): Promise<number> {
   if (subcommand === 'set') {
     const [rawSlug, rawProjectId] = args.positionals
     if (!rawSlug || !rawProjectId) {
-      throw new UsageError('Usage: toggl repo set <slug|.> <togglProjectId>')
+      throw new UsageError('Usage: bita repo set <slug|.> <projectId>')
     }
 
     const projectId = Number(rawProjectId)
@@ -89,24 +90,22 @@ export async function runRepo(argv: string[]): Promise<number> {
     }
     const slug = rawSlug === '.' ? (identity as RepoIdentity).slug : rawSlug
 
-    const ctx = await createLeanContext(args)
-    const project = ctx.catalog?.projects.get(projectId)
-    if (ctx.catalog && !project) {
-      throw new UsageError(
-        `Toggl project ${projectId} is not in the cached catalog. Run "toggl projects --no-cache" and try again.`,
-      )
+    const ctx = createLocalContext(args)
+    const project = findProjectById(ctx.db, projectId)
+    ctx.db.close()
+    if (!project) {
+      throw new UsageError(`No project with id ${projectId}. Run "bita projects" to list them.`)
     }
 
     await setRepoMapping(slug, {
-      togglProjectId: projectId,
-      togglProjectName: project?.name ?? String(projectId),
-      workspaceId: ctx.workspaceId,
+      projectId: projectId,
+      projectName: project.name,
       slugSource: identity?.source ?? 'path',
       verifiedAt: new Date().toISOString(),
     })
 
     if (json) {
-      writeJson(successEnvelope('repo set', { slug, togglProjectId: projectId }))
+      writeJson(successEnvelope('repo set', { slug, projectId: projectId }))
     } else {
       writeOut(`Mapped ${slug} to ${project?.name ?? projectId} (${projectId}).`)
     }
@@ -115,7 +114,7 @@ export async function runRepo(argv: string[]): Promise<number> {
 
   if (subcommand === 'unset') {
     const [rawSlug] = args.positionals
-    if (!rawSlug) throw new UsageError('Usage: toggl repo unset <slug>')
+    if (!rawSlug) throw new UsageError('Usage: bita repo unset <slug>')
 
     const identity = rawSlug === '.' ? await currentRepoIdentity() : null
     const slug = rawSlug === '.' && identity ? identity.slug : rawSlug

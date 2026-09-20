@@ -1,13 +1,13 @@
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { UsageError } from '../http/errors.ts'
+import { UsageError } from '../errors.ts'
 import { NOTE_BODY_MAX, NOTE_SCHEMA_VERSION } from '../config/constants.ts'
 
-export const NOTES_DIR = path.join(os.homedir(), '.local', 'state', 'toggl-track-cli')
+export const NOTES_DIR = path.join(os.homedir(), '.local', 'state', 'bita')
 export const NOTES_PATH = path.join(NOTES_DIR, 'entry-notes.ndjson')
 
-export type NoteSource = 'start' | 'stop' | 'cancel' | 'manual'
+export type NoteSource = 'start' | 'stop' | 'cancel' | 'manual' | 'log'
 
 export interface NoteArtifacts {
   files: string[]
@@ -18,7 +18,6 @@ export interface NoteArtifacts {
 export interface EntryNote {
   schemaVersion: number
   entryId: number
-  workspaceId: number
   recordedAt: string
   source: NoteSource
   title: string
@@ -30,7 +29,6 @@ export interface EntryNote {
 const KNOWN_KEYS = new Set([
   'schemaVersion',
   'entryId',
-  'workspaceId',
   'recordedAt',
   'source',
   'title',
@@ -49,7 +47,6 @@ function asStringArray(value: unknown, field: string): string[] {
 
 export interface NoteDefaults {
   entryId: number
-  workspaceId: number
   source: NoteSource
   title: string
   recordedAt: string
@@ -85,7 +82,6 @@ export function parseNoteInput(raw: unknown, defaults: NoteDefaults): EntryNote 
   return {
     schemaVersion: NOTE_SCHEMA_VERSION,
     entryId: defaults.entryId,
-    workspaceId: defaults.workspaceId,
     recordedAt: defaults.recordedAt,
     source: defaults.source,
     title: typeof input['title'] === 'string' ? input['title'] : defaults.title,

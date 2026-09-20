@@ -1,4 +1,4 @@
-import { UsageError } from '../http/errors.ts'
+import { UsageError } from '../errors.ts'
 import { addDays, isValidIsoDay, localDay, weekdayIndex } from './timezone.ts'
 
 export type RangePreset =

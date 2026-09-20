@@ -1,26 +1,22 @@
 import { readConfig } from '../../state/config.ts'
-import { isMirrorFresh, readRunningMirror } from '../../state/running.ts'
-import { formatDuration } from '../../domain/duration.ts'
+import { openDatabase } from '../../db/open.ts'
+import { databasePath } from '../../db/paths.ts'
+import { resolveTimezone } from '../../db/settings.ts'
+import { listRunning } from '../../db/entries.ts'
+import { enrichEntry } from '../../domain/enrich.ts'
 import { currentRepoIdentity } from './repo.ts'
 
 const RULE = [
-  'Registro de tiempo (toggl-track-cli): este repositorio esta mapeado a un proyecto de Toggl.',
+  'Registro de tiempo (bita): este repositorio esta mapeado a un proyecto.',
   'Si el trabajo que empieza va a dejar un artefacto (un commit, un archivo, un recurso desplegado,',
   'una migracion, una MR, una causa raiz diagnosticada) propone arrancar el cronometro en una linea,',
   'justo antes de la primera edicion, y arrancalo solo con un si explicito:',
-  '  toggl start "<titulo corto>"',
+  '  bita start "<titulo corto>"',
   'No lo propongas para preguntas, lecturas, busquedas ni arreglos de una linea.',
-  'Al terminar, escribe la nota rica (resumen y lo que se toco) y para:',
-  '  toggl stop --note-json <archivo>',
+  'Pueden correr varios cronometros a la vez: si empiezas algo distinto, arranca otro en vez de',
+  'parar el que hay. Al terminar, escribe la nota rica (resumen y lo que se toco) y para:',
+  '  bita stop <id> --note-json <archivo>',
 ].join('\n')
-
-function runningLine(description: string, startIso: string, now: Date): string {
-  const started = Date.parse(startIso)
-  const elapsed = Number.isFinite(started)
-    ? formatDuration(Math.max(0, Math.floor((now.getTime() - started) / 1000)))
-    : 'unknown'
-  return `Hay un cronometro CORRIENDO: "${description}" (${elapsed}). No arranques otro; paralo o usa --switch.`
-}
 
 export async function runHook(argv: string[]): Promise<number> {
   const event = argv[0] ?? 'session-start'
@@ -34,17 +30,30 @@ export async function runHook(argv: string[]): Promise<number> {
     const mapping = config.repoMapping[identity.slug]
     if (!mapping) return 0
 
-    const now = new Date()
-    const mirror = await readRunningMirror()
-    const state =
-      mirror?.state === 'running' && isMirrorFresh(mirror, now)
-        ? runningLine(mirror.description ?? '', mirror.start ?? '', now)
-        : 'No hay ningun cronometro corriendo.'
+    const db = openDatabase(databasePath())
+    let state: string
+    try {
+      const now = new Date()
+      const timezone = resolveTimezone(db)
+      const running = listRunning(db).map((row) => enrichEntry(row, timezone, now))
+      state =
+        running.length === 0
+          ? 'No hay ningun cronometro corriendo.'
+          : [
+              `Cronometros CORRIENDO (${running.length}):`,
+              ...running.map(
+                (entry) =>
+                  `  #${entry.id} "${entry.description}" (${entry.durationHuman}${entry.projectName ? `, ${entry.projectName}` : ''})`,
+              ),
+            ].join('\n')
+    } finally {
+      db.close()
+    }
 
     const additionalContext = [
       RULE,
       '',
-      `Proyecto de Toggl de este repositorio: ${mapping.togglProjectName}.`,
+      `Proyecto de este repositorio: ${mapping.projectName}.`,
       state,
     ].join('\n')
 

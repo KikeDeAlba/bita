@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseClockTime, parseDurationSeconds } from '../src/domain/duration-input.ts'
-import { UsageError } from '../src/http/errors.ts'
+import { UsageError } from '../src/errors.ts'
 
 test('parses the duration forms a human would type', () => {
   assert.equal(parseDurationSeconds('45m', '--duration'), 2700)
