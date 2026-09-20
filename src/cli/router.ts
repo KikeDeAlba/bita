@@ -6,6 +6,7 @@ import { runSummary } from './commands/summary.ts'
 import { runMap } from './commands/map.ts'
 import { runConfig } from './commands/config.ts'
 import { runRepo } from './commands/repo.ts'
+import { runScope } from './commands/scope.ts'
 import { runNote } from './commands/note.ts'
 import { runHook } from './commands/hook.ts'
 import { runLink } from './commands/link.ts'
@@ -36,7 +37,8 @@ Reporting:
 Configuration:
   map list|set|unset|story   Map projects to Jira projects, parents and stories
   repo init [path]           Create a project for a repository and map it
-  repo show|list|set|unset   Inspect or change the mapping by hand
+  repo show                  Where am I, and which project resolves here
+  scope list|set|unset|which Map a path prefix to a project; the longest one wins
   config get|set-jira        Inspect or set the local configuration
   hook session-start         Emit the Claude Code SessionStart context
 
@@ -123,6 +125,8 @@ export async function route(argv: string[]): Promise<number> {
       return runConfig(rest)
     case 'repo':
       return runRepo(rest)
+    case 'scope':
+      return runScope(rest)
     case 'note':
       return runNote(rest)
     case 'hook':

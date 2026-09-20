@@ -5,6 +5,7 @@ import { resolveTimezone } from '../../db/settings.ts'
 import { listRunning } from '../../db/entries.ts'
 import { enrichEntry } from '../../domain/enrich.ts'
 import { currentRepoIdentity } from './repo.ts'
+import { resolveMappedProject } from '../resolve-project.ts'
 
 const RULE = [
   'Registro de tiempo (bita): este repositorio esta mapeado a un proyecto.',
@@ -27,7 +28,7 @@ export async function runHook(argv: string[]): Promise<number> {
     if (!identity) return 0
 
     const config = await readConfig()
-    const mapping = config.repoMapping[identity.slug]
+    const mapping = resolveMappedProject(identity.slug, config)
     if (!mapping) return 0
 
     const db = openDatabase(databasePath())

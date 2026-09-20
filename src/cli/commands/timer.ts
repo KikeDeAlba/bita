@@ -26,8 +26,9 @@ import {
 import { findProjectByName, listProjects } from '../../db/projects.ts'
 import type { EntryWithProjectRow } from '../../db/rows.ts'
 import { appendNote, parseNoteInput, type NoteSource } from '../../state/notes.ts'
-import { readConfig, setRepoMapping } from '../../state/config.ts'
+import { readConfig, setScopeMapping } from '../../state/config.ts'
 import { currentRepoIdentity } from './repo.ts'
+import { resolveMappedProject } from '../resolve-project.ts'
 import { promptText } from '../prompt.ts'
 
 const TIMER_OPTIONS = {
@@ -75,7 +76,7 @@ async function resolveProjectId(
   const identity = await currentRepoIdentity()
   if (identity) {
     const config = await readConfig()
-    const mapped = config.repoMapping[identity.slug]
+    const mapped = resolveMappedProject(identity.slug, config)
     if (mapped) return mapped.projectId
   }
 
@@ -101,7 +102,7 @@ async function resolveProjectId(
   const fromList = candidates[picked - 1]
   const projectId = picked <= candidates.length && fromList ? fromList.id : picked
 
-  await setRepoMapping(identity.slug, {
+  await setScopeMapping(identity.slug, {
     projectId: projectId,
     projectName: listProjects(ctx.db, true).find((p) => p.id === projectId)?.name ?? String(projectId),
     slugSource: identity.source,
