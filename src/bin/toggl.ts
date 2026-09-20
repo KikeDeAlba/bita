@@ -5,12 +5,14 @@ import {
   KeychainError,
   MissingTokenError,
   PartialWriteError,
+  UsageError,
+} from '../errors.ts'
+import {
   TogglAuthError,
   TogglNetworkError,
   TogglQuotaError,
   TogglRateLimitError,
   TogglWorkspaceAccessError,
-  UsageError,
 } from '../http/errors.ts'
 import {
   EXIT_AUTH,

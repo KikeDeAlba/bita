@@ -1,5 +1,5 @@
 import { parseArgs, type ParseArgsConfig } from 'node:util'
-import { UsageError } from '../http/errors.ts'
+import { UsageError } from '../errors.ts'
 import { RANGE_PRESETS, type DateRangeInput, type RangePreset } from '../domain/date-range.ts'
 import type { TagMatchMode } from '../domain/filter.ts'
 import { PENDING_TAG, REGISTERED_TAG } from '../config/constants.ts'

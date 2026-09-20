@@ -2,7 +2,7 @@ import type { TogglClient } from '../http/client.ts'
 import type { WireClient, WireProject, WireTag, WireWorkspace } from './wire-types.ts'
 import { readCache, writeCache } from '../state/cache.ts'
 import { CATALOG_CACHE_TTL_MS } from '../config/constants.ts'
-import { UsageError } from '../http/errors.ts'
+import { UsageError } from '../errors.ts'
 
 export interface Catalog {
   projects: Map<number, WireProject>

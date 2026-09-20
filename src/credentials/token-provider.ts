@@ -1,4 +1,4 @@
-import { MissingTokenError } from '../http/errors.ts'
+import { MissingTokenError } from '../errors.ts'
 import { TOKEN_ENV_VAR } from '../config/constants.ts'
 import { readKeychainToken, type KeychainDeps, type KeychainOptions } from './keychain.ts'
 

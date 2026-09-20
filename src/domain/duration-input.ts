@@ -1,4 +1,4 @@
-import { UsageError } from '../http/errors.ts'
+import { UsageError } from '../errors.ts'
 
 const DURATION_PATTERN = /^(?:(\d+)h)?(?:(\d+)m)?$/
 

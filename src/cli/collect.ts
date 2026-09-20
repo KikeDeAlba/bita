@@ -1,4 +1,4 @@
-import { UsageError } from '../http/errors.ts'
+import { UsageError } from '../errors.ts'
 import { resolveDateRange, type ResolvedRange } from '../domain/date-range.ts'
 import { matchesTagFilter, withinLocalRange, type TagFilter } from '../domain/filter.ts'
 import { enrichEntries } from '../domain/enrich.ts'

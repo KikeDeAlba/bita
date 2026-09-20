@@ -1,5 +1,5 @@
 import { TogglClient } from '../../http/client.ts'
-import { UsageError } from '../../http/errors.ts'
+import { UsageError } from '../../errors.ts'
 import {
   deleteKeychainToken,
   defaultAccount,

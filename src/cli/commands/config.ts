@@ -1,4 +1,4 @@
-import { UsageError } from '../../http/errors.ts'
+import { UsageError } from '../../errors.ts'
 import { parseCommandArgs, readBoolean, readString } from '../args.ts'
 import { CONFIG_PATH, readConfig, writeConfig } from '../../state/config.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'

@@ -1,4 +1,4 @@
-import { UsageError } from '../../http/errors.ts'
+import { UsageError } from '../../errors.ts'
 import { parseCommandArgs, readBoolean, readString } from '../args.ts'
 import { createContext } from '../context.ts'
 import { readConfig, setProjectMapping, setStory, unsetProjectMapping } from '../../state/config.ts'

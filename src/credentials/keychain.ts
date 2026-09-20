@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import os from 'node:os'
-import { KeychainError } from '../http/errors.ts'
+import { KeychainError } from '../errors.ts'
 import { KEYCHAIN_ITEM_NOT_FOUND_EXIT_CODE, KEYCHAIN_SERVICE } from '../config/constants.ts'
 
 const SECURITY_BIN = '/usr/bin/security'

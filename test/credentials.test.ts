@@ -6,7 +6,7 @@ import {
   writeKeychainToken,
 } from '../src/credentials/keychain.ts'
 import { maskToken, resolveToken } from '../src/credentials/token-provider.ts'
-import { KeychainError, MissingTokenError } from '../src/http/errors.ts'
+import { KeychainError, MissingTokenError } from '../src/errors.ts'
 
 const options = { service: 'toggl-track-test', account: 'tester' }
 

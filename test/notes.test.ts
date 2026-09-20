@@ -4,7 +4,7 @@ import { appendFile, mkdtemp, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { appendNote, parseNoteInput, readNotesByEntryId, type EntryNote } from '../src/state/notes.ts'
-import { UsageError } from '../src/http/errors.ts'
+import { UsageError } from '../src/errors.ts'
 import { NOTE_BODY_MAX } from '../src/config/constants.ts'
 
 async function tempNotesPath(): Promise<string> {

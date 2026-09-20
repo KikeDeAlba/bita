@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { UsageError } from '../../http/errors.ts'
+import { UsageError } from '../../errors.ts'
 import { BASE_OPTIONS, parseCommandArgs, readBoolean, readString } from '../args.ts'
 import { appendNote, parseNoteInput, readNotesByEntryId } from '../../state/notes.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'

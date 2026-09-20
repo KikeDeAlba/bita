@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises'
-import { ConflictError, TogglNotFoundError, UsageError } from '../../http/errors.ts'
+import { ConflictError, UsageError } from '../../errors.ts'
+import { TogglNotFoundError } from '../../http/errors.ts'
 import { BASE_OPTIONS, parseCommandArgs, readBoolean, readInteger, readString, readStringList, type ParsedArgs } from '../args.ts'
 import { createLeanContext, type LeanContext } from '../lean-context.ts'
 import { currentEntry, deleteEntry, startEntry, stopEntry } from '../../toggl/timer.ts'

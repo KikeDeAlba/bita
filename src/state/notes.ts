@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { UsageError } from '../http/errors.ts'
+import { UsageError } from '../errors.ts'
 import { NOTE_BODY_MAX, NOTE_SCHEMA_VERSION } from '../config/constants.ts'
 
 export const NOTES_DIR = path.join(os.homedir(), '.local', 'state', 'toggl-track-cli')

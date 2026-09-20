@@ -1,4 +1,4 @@
-import { UsageError } from '../http/errors.ts'
+import { UsageError } from '../errors.ts'
 import { runAuth } from './commands/auth.ts'
 import { runWhoami } from './commands/whoami.ts'
 import { runProjects, runTags } from './commands/catalog.ts'

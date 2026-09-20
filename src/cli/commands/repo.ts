@@ -1,5 +1,5 @@
 import os from 'node:os'
-import { UsageError } from '../../http/errors.ts'
+import { UsageError } from '../../errors.ts'
 import { parseCommandArgs, readBoolean, BASE_OPTIONS } from '../args.ts'
 import { createLeanContext } from '../lean-context.ts'
 import { readRepoContext } from '../../state/git.ts'

@@ -1,4 +1,4 @@
-import { PartialWriteError, UsageError } from '../../http/errors.ts'
+import { PartialWriteError, UsageError } from '../../errors.ts'
 import { parseCommandArgs, readBoolean, readString, readStringList, type ParsedArgs } from '../args.ts'
 import { createContext, type AppContext } from '../context.ts'
 import { collectEntries } from '../collect.ts'
