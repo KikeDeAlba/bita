@@ -6,8 +6,8 @@ import { formatDuration } from '../../domain/duration.ts'
 import { renderTable } from '../table.ts'
 import { successEnvelope, writeErr, writeJson, writeOut } from '../output.ts'
 import { MAX_TASK_SECONDS } from '../../config/constants.ts'
-import { NOTES_PATH } from '../../state/notes.ts'
-import { docsByEntry } from '../../db/docs.ts'
+import { NOTES_PATH, readNotes } from '../../state/notes.ts'
+import { countDocs, docsByEntry } from '../../db/docs.ts'
 import { loadSummaryDocs, parseNotesMode } from '../../docs/read.ts'
 import { touchesByEntry } from '../../db/touches.ts'
 import { readConfig, storyThemes } from '../../state/config.ts'
@@ -62,6 +62,12 @@ export async function runSummary(argv: string[]): Promise<number> {
     const missingNotes = allEntryIds.filter(
       (id) => !loaded.byEntry.has(id) && (touchedById.get(id)?.length ?? 0) === 0,
     )
+
+    if (!skipNotes && countDocs(ctx.db) === 0 && (await readNotes()).length > 0) {
+      result.warnings.push(
+        `There are notes in ${NOTES_PATH} and no documents yet. Run "bita notes migrate".`,
+      )
+    }
 
     const withMapping = groups.map((group) => {
       const mapping =
