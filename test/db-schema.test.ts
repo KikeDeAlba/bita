@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import { LATEST_VERSION } from '../src/db/schema.ts'
 import { migrate, openDatabase, openMemoryDatabase, readSchemaVersion } from '../src/db/open.ts'
 import { DB_PATH_ENV_VAR, databasePath } from '../src/db/paths.ts'
+import { SCHEMA_VERSION } from '../src/config/constants.ts'
 
 test('brings a fresh database up to the latest schema version', () => {
   const db = openMemoryDatabase()
@@ -63,6 +64,24 @@ test('rejects an entry that stops before it starts', () => {
     /CHECK/i,
   )
   db.close()
+})
+
+test('replaces the dead notes table with one that points at documents', () => {
+  const db = openMemoryDatabase()
+  assert.equal(LATEST_VERSION, 3)
+
+  const tables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all()
+    .map((row) => (row as { name: string }).name)
+
+  assert.equal(tables.includes('notes'), false)
+  assert.equal(tables.includes('entry_docs'), true)
+  db.close()
+})
+
+test('the JSON envelope version is not the schema version', () => {
+  assert.equal(SCHEMA_VERSION, 3)
 })
 
 test('reads the database location from the environment', () => {
