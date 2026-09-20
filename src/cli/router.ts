@@ -7,6 +7,7 @@ import { runMap } from './commands/map.ts'
 import { runConfig } from './commands/config.ts'
 import { runRepo } from './commands/repo.ts'
 import { runScope } from './commands/scope.ts'
+import { runAmend } from './commands/amend.ts'
 import { runNote } from './commands/note.ts'
 import { runHook } from './commands/hook.ts'
 import { runLink } from './commands/link.ts'
@@ -25,6 +26,7 @@ Tracking:
   stop [id]                  Stop one timer (--last, --all, or pick when ambiguous)
   cancel [id]                Discard a running timer without recording it
   log "<title>"              Record a block that already happened
+  amend <id|--draft>         Fill in the title, project or note of an entry
   note get|set <entryId>     Read or attach the rich note of an entry
   link <ids...> --issue K    Mark entries as registered in a Jira issue
 
@@ -80,6 +82,12 @@ Project options:
   --activate                 With "project archive", bring it back instead
   --all                      With "projects", include archived ones
 
+Amend options:
+  --draft                    Target the single running draft
+  --title "..."              Set the title
+  --project ID|NAME          Set the project
+  --note-json FILE           Attach a rich note
+
 Link options:
   --issue KEY                The Jira issue the entries were written to
   --ids A,B,C                Entry ids, as an alternative to positionals
@@ -127,6 +135,8 @@ export async function route(argv: string[]): Promise<number> {
       return runRepo(rest)
     case 'scope':
       return runScope(rest)
+    case 'amend':
+      return runAmend(rest)
     case 'note':
       return runNote(rest)
     case 'hook':

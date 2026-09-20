@@ -47,9 +47,13 @@ const TIMER_OPTIONS = {
   'require-running': { type: 'boolean' as const, default: false },
 }
 
+function readTitle(args: ParsedArgs): string {
+  return args.positionals.join(' ').trim()
+}
+
 function requireTitle(args: ParsedArgs): string {
-  const title = args.positionals.join(' ').trim()
-  if (!title) throw new UsageError('A title is required: bita start "what you are doing".')
+  const title = readTitle(args)
+  if (!title) throw new UsageError('A title is required: bita log "what you did".')
   return title
 }
 
@@ -82,13 +86,13 @@ async function resolveProjectId(
 
   const candidates = listProjects(ctx.db).slice(0, 10)
 
-  if (json || !process.stdin.isTTY || !identity) {
+  if (!identity) return null
+
+  if (json || !process.stdin.isTTY) {
     throw new ConflictError(
-      identity
-        ? `No project is mapped to the repository "${identity.slug}".`
-        : 'Not inside a mapped repository and no --project was given.',
+      `No project resolves for the repository "${identity.slug}".`,
       'REPO_NOT_MAPPED',
-      identity ? `bita repo set ${identity.slug} <projectId>` : 'bita start "title" --project <id>',
+      `bita repo init`,
     )
   }
 
@@ -163,11 +167,12 @@ async function recordNote(
 export async function runStart(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, TIMER_OPTIONS, BASE_OPTIONS)
   const json = readBoolean(args, 'json')
-  const title = requireTitle(args)
+  const title = readTitle(args)
   const ctx = createLocalContext(args)
 
   try {
     const projectId = await resolveProjectId(ctx, args, json)
+    const isDraft = title.length === 0
     const at = readString(args, 'at')
     const startedAt = at === undefined ? ctx.now.toISOString() : parseClockTime(at, ctx.now, '--at').toISOString()
 
@@ -191,12 +196,18 @@ export async function runStart(argv: string[]): Promise<number> {
             description: entry.description,
           })),
           runningCount: countRunning(ctx.db),
+          draft: isDraft,
         }),
       )
     } else {
-      writeOut(`Started #${created.id}: ${title}`)
+      writeOut(isDraft ? `Started #${created.id}, still a draft` : `Started #${created.id}: ${title}`)
       if (enriched?.projectName) writeOut(`Project : ${enriched.projectName}`)
       writeOut(`Since   : ${enriched?.startLocal.slice(11, 16) ?? ''}`)
+      if (isDraft) {
+        writeOut('')
+        writeOut('It has no title yet, so it stays out of any Jira summary.')
+        writeOut(`Name it with: bita amend ${created.id} --title "..."`)
+      }
       if (alreadyRunning.length > 0) {
         writeOut('')
         writeOut(`Also running (${alreadyRunning.length}):`)
@@ -396,11 +407,12 @@ export async function runCancel(argv: string[]): Promise<number> {
 export async function runLog(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, TIMER_OPTIONS, BASE_OPTIONS)
   const json = readBoolean(args, 'json')
-  const title = requireTitle(args)
+  const title = readTitle(args)
   const ctx = createLocalContext(args)
 
   try {
     const projectId = await resolveProjectId(ctx, args, json)
+    const isDraft = title.length === 0
     const rawFrom = readString(args, 'from')
     const rawTo = readString(args, 'to')
     const rawFor = readString(args, 'for')
