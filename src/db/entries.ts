@@ -16,7 +16,7 @@ interface RawEntry {
   updated_at: string
 }
 
-interface RawEntryWithProject extends RawEntry {
+export interface RawEntryWithProject extends RawEntry {
   project_name: string | null
   client_name: string | null
   registered: number
@@ -49,7 +49,7 @@ function toEntry(raw: RawEntry): EntryRow {
   }
 }
 
-function toEntryWithProject(raw: RawEntryWithProject): EntryWithProjectRow {
+export function toEntryWithProject(raw: RawEntryWithProject): EntryWithProjectRow {
   return {
     ...toEntry(raw),
     projectName: raw.project_name,
