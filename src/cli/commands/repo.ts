@@ -46,7 +46,7 @@ export async function runRepo(argv: string[]): Promise<number> {
     writeOut(
       mapping
         ? `Project : ${mapping.projectName} (${mapping.projectId})`
-        : `Project : not mapped. Run "toggl repo set . <projectId>".`,
+        : `Project : not mapped. Run "bita repo set . <projectId>".`,
     )
     return 0
   }

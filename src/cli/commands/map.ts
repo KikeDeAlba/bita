@@ -63,7 +63,7 @@ export async function runMap(argv: string[]): Promise<number> {
   if (subcommand === 'set') {
     const [rawProjectId, rawJiraKey] = args.positionals
     if (!rawProjectId || !rawJiraKey) {
-      throw new UsageError('Usage: toggl map set <projectId> <JIRAKEY> [--issue-type "Tarea"]')
+      throw new UsageError('Usage: bita map set <projectId> <JIRAKEY> [--issue-type "Tarea"]')
     }
 
     const projectId = Number(rawProjectId)
@@ -144,7 +144,7 @@ export async function runMap(argv: string[]): Promise<number> {
 
   if (subcommand === 'unset') {
     const [rawProjectId] = args.positionals
-    if (!rawProjectId) throw new UsageError('Usage: toggl map unset <projectId>')
+    if (!rawProjectId) throw new UsageError('Usage: bita map unset <projectId>')
 
     const projectId = Number(rawProjectId)
     if (!Number.isInteger(projectId)) {
@@ -163,7 +163,7 @@ export async function runMap(argv: string[]): Promise<number> {
   if (subcommand === 'story') {
     const [rawProjectId, themeId, rawIssueKey] = args.positionals
     if (!rawProjectId || !themeId || !rawIssueKey) {
-      throw new UsageError('Usage: toggl map story <projectId> <themeId> <ISSUE-KEY>')
+      throw new UsageError('Usage: bita map story <projectId> <themeId> <ISSUE-KEY>')
     }
 
     const projectId = Number(rawProjectId)
