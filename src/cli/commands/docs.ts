@@ -1,4 +1,4 @@
-import { DOC_SECTIONS } from '../../config/constants.ts'
+import { LEGACY_ENTRY_DOC_SECTIONS } from '../../config/constants.ts'
 import { findDocByRelPath, listDocsForEntry } from '../../db/docs.ts'
 import { findEntryWithProject } from '../../db/entries.ts'
 import {
@@ -168,7 +168,10 @@ async function viewOf(
     docTitle: doc.title,
     kind: doc.kind,
     source: doc.source,
-    sectionCount: parsed === null ? doc.sectionCount : sectionStates(parsed).filter((s) => s.state === 'written').length,
+    sectionCount:
+      parsed === null
+        ? doc.sectionCount
+        : sectionStates(parsed, LEGACY_ENTRY_DOC_SECTIONS).filter((s) => s.state === 'written').length,
     byteSize: state.byteSize ?? doc.byteSize,
     createdAt: doc.createdAt,
     recordedAt: doc.recordedAt,
@@ -176,7 +179,7 @@ async function viewOf(
     branch: doc.branch,
     headSha: doc.headSha,
     appendixCount,
-    sections: options.sections && parsed !== null ? sectionStates(parsed) : null,
+    sections: options.sections && parsed !== null ? sectionStates(parsed, LEGACY_ENTRY_DOC_SECTIONS) : null,
     file: state,
   }
 }
@@ -256,7 +259,7 @@ function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): number {
   const meta = {
     root: ctx.docsRoot,
     timezone: ctx.timezone,
-    sections: [...DOC_SECTIONS],
+    sections: [...LEGACY_ENTRY_DOC_SECTIONS],
     includesEmpty,
     totals: {
       projectCount: projects.length,
@@ -437,7 +440,7 @@ async function runShow(ctx: LocalContext, args: ParsedArgs, json: boolean): Prom
       frontMatter: parsed === null ? {} : Object.fromEntries(parsed.frontMatter),
       frontMatterValid: parsed?.frontMatterValid ?? false,
       preamble: parsed?.preamble ?? '',
-      sections: parsed === null ? null : sectionStates(parsed),
+      sections: parsed === null ? null : sectionStates(parsed, LEGACY_ENTRY_DOC_SECTIONS),
       sectionCount: primary.sectionCount,
       byteSize: state.byteSize ?? primary.byteSize,
       markdown: wantsMarkdown ? raw : null,
@@ -452,7 +455,7 @@ async function runShow(ctx: LocalContext, args: ParsedArgs, json: boolean): Prom
     appendices: appendixViews,
   }
 
-  const meta = { root: ctx.docsRoot, timezone: ctx.timezone, sections: [...DOC_SECTIONS], warnings: warningsFor(counts) }
+  const meta = { root: ctx.docsRoot, timezone: ctx.timezone, sections: [...LEGACY_ENTRY_DOC_SECTIONS], warnings: warningsFor(counts) }
 
   if (json) {
     writeJson(successEnvelope('docs show', data, meta))

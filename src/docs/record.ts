@@ -2,7 +2,11 @@ import type { DatabaseSync } from 'node:sqlite'
 import type { EntryWithProjectRow } from '../db/rows.ts'
 import type { NoteSource } from '../state/notes.ts'
 import { findDocForEntry, moveDoc, upsertDoc, type EntryDocRow } from '../db/docs.ts'
-import { DOC_SCHEMA_VERSION } from '../config/constants.ts'
+import {
+  DOC_SCHEMA_VERSION,
+  LEGACY_ENTRY_DOC_SECTIONS,
+  LEGACY_ENTRY_DOC_SECTIONS_REQUIRED,
+} from '../config/constants.ts'
 import { formatDuration } from '../domain/duration.ts'
 import { localDay } from '../domain/timezone.ts'
 import { docRelPath } from './layout.ts'
@@ -128,10 +132,17 @@ export async function recordEntryDoc(
     if (raw === null && options.create !== true && !options.section) return null
 
     let doc: ParsedDocument =
-      raw === null ? emptyDocument(new Map(), entry.description || '(sin título)') : parseDocument(raw)
+      raw === null
+        ? emptyDocument(new Map(), entry.description || '(sin título)', LEGACY_ENTRY_DOC_SECTIONS_REQUIRED)
+        : parseDocument(raw)
 
     if (options.section) {
-      doc = upsertSection(doc, options.section.heading, options.section.body).doc
+      doc = upsertSection(
+        doc,
+        options.section.heading,
+        options.section.body,
+        LEGACY_ENTRY_DOC_SECTIONS,
+      ).doc
     }
 
     if (doc.frontMatterValid || raw === null) {

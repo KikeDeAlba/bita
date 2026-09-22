@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { DOC_SECTIONS, DOC_SECTIONS_REQUIRED } from '../config/constants.ts'
+import { slugify } from './slug.ts'
 
 export interface DocSection {
   heading: string
@@ -14,6 +14,14 @@ export interface DocSectionState {
   canonical: boolean
 }
 
+export interface DocHeading {
+  heading: string
+  level: 2 | 3
+  anchor: string
+  order: number
+  empty: boolean
+}
+
 export interface ParsedDocument {
   frontMatter: Map<string, string>
   frontMatterValid: boolean
@@ -23,6 +31,23 @@ export interface ParsedDocument {
 }
 
 const FENCE = '---'
+const CODE_FENCE = /^ {0,3}(`{3,}|~{3,})/
+
+function fenceTracker(): (line: string) => boolean {
+  let open: { char: string; length: number } | null = null
+  return (line: string): boolean => {
+    const marker = CODE_FENCE.exec(line)?.[1]
+    if (open === null) {
+      if (marker === undefined) return false
+      open = { char: marker.slice(0, 1), length: marker.length }
+      return true
+    }
+    if (marker !== undefined && marker.slice(0, 1) === open.char && marker.length >= open.length) {
+      open = null
+    }
+    return true
+  }
+}
 
 function splitFrontMatter(text: string): { raw: string | null; rest: string } {
   const normalized = text.startsWith('﻿') ? text.slice(1) : text
@@ -63,7 +88,15 @@ export function parseDocument(text: string): ParsedDocument {
   let title = ''
   let current: { heading: string; body: string[] } | null = null
 
+  const fenced = fenceTracker()
+
   for (const line of lines) {
+    if (fenced(line)) {
+      if (current) current.body.push(line)
+      else preamble.push(line)
+      continue
+    }
+
     const sectionHeading = /^##\s+(.*\S)\s*$/.exec(line)
     if (sectionHeading?.[1]) {
       if (current) sections.push({ heading: current.heading, body: current.body.join('\n').trim() })
@@ -106,13 +139,17 @@ export function renderDocument(doc: ParsedDocument): string {
   return parts.join('\n')
 }
 
-export function emptyDocument(frontMatter: Map<string, string>, title: string): ParsedDocument {
+export function emptyDocument(
+  frontMatter: Map<string, string>,
+  title: string,
+  seed: readonly string[] = [],
+): ParsedDocument {
   return {
     frontMatter,
     frontMatterValid: true,
     title,
     preamble: '',
-    sections: DOC_SECTIONS_REQUIRED.map((heading) => ({ heading, body: '' })),
+    sections: seed.map((heading) => ({ heading, body: '' })),
   }
 }
 
@@ -120,12 +157,13 @@ export function upsertSection(
   doc: ParsedDocument,
   heading: string,
   body: string,
+  order: readonly string[] = [],
 ): { doc: ParsedDocument; created: boolean; changed: boolean } {
   const index = doc.sections.findIndex((section) => section.heading === heading)
   const trimmed = body.trim()
 
   if (index === -1) {
-    const at = placementFor(doc, heading)
+    const at = placementFor(doc, heading, order)
     const sections = [...doc.sections]
     sections.splice(at, 0, { heading, body: trimmed })
     return { doc: { ...doc, sections }, created: true, changed: true }
@@ -139,12 +177,12 @@ export function upsertSection(
   return { doc: { ...doc, sections }, created: false, changed: true }
 }
 
-function placementFor(doc: ParsedDocument, heading: string): number {
-  const canonical = DOC_SECTIONS.indexOf(heading)
+function placementFor(doc: ParsedDocument, heading: string, order: readonly string[]): number {
+  const canonical = order.indexOf(heading)
   if (canonical === -1) return doc.sections.length
 
   for (const [index, section] of doc.sections.entries()) {
-    const position = DOC_SECTIONS.indexOf(section.heading)
+    const position = order.indexOf(section.heading)
     if (position !== -1 && position > canonical) return index
   }
   return doc.sections.length
@@ -170,24 +208,82 @@ export function filledSections(doc: ParsedDocument): string[] {
   return doc.sections.filter((section) => section.body.length > 0).map((section) => section.heading)
 }
 
-export function sectionStates(doc: ParsedDocument): DocSectionState[] {
+export function sectionStates(doc: ParsedDocument, canonical: readonly string[]): DocSectionState[] {
   const seen = new Map<string, DocSection>()
   for (const section of doc.sections) {
     if (!seen.has(section.heading)) seen.set(section.heading, section)
   }
 
-  const states: DocSectionState[] = DOC_SECTIONS.map((heading) => {
+  const states: DocSectionState[] = canonical.map((heading) => {
     const section = seen.get(heading)
     if (!section) return { heading, state: 'absent', canonical: true }
     return { heading, state: section.body.length > 0 ? 'written' : 'empty', canonical: true }
   })
 
   for (const [heading, section] of seen) {
-    if (DOC_SECTIONS.includes(heading)) continue
+    if (canonical.includes(heading)) continue
     states.push({ heading, state: section.body.length > 0 ? 'written' : 'empty', canonical: false })
   }
 
   return states
+}
+
+export function outline(doc: ParsedDocument): DocHeading[] {
+  const headings: DocHeading[] = []
+  const taken = new Map<string, number>()
+
+  const anchorFor = (heading: string): string => {
+    const base = slugify(heading) || 'seccion'
+    const used = taken.get(base) ?? 0
+    taken.set(base, used + 1)
+    return used === 0 ? base : `${base}-${used + 1}`
+  }
+
+  for (const section of doc.sections) {
+    const subheadings = subheadingsOf(section.body)
+    headings.push({
+      heading: section.heading,
+      level: 2,
+      anchor: anchorFor(section.heading),
+      order: headings.length,
+      empty: bodyIsEmpty(section.body),
+    })
+    for (const sub of subheadings) {
+      headings.push({
+        heading: sub.heading,
+        level: 3,
+        anchor: anchorFor(sub.heading),
+        order: headings.length,
+        empty: sub.empty,
+      })
+    }
+  }
+
+  return headings
+}
+
+function subheadingsOf(body: string): { heading: string; empty: boolean }[] {
+  const found: { heading: string; empty: boolean }[] = []
+  const fenced = fenceTracker()
+
+  for (const line of body.split('\n')) {
+    if (fenced(line)) {
+      if (found.length > 0) found[found.length - 1]!.empty = false
+      continue
+    }
+    const match = /^###\s+(.*\S)\s*$/.exec(line)
+    if (match?.[1]) {
+      found.push({ heading: match[1], empty: true })
+      continue
+    }
+    if (found.length > 0 && line.trim().length > 0) found[found.length - 1]!.empty = false
+  }
+
+  return found
+}
+
+function bodyIsEmpty(body: string): boolean {
+  return body.trim().length === 0
 }
 
 export function checksumOf(contents: string): string {

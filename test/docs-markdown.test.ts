@@ -1,10 +1,15 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import {
+  LEGACY_ENTRY_DOC_SECTIONS,
+  LEGACY_ENTRY_DOC_SECTIONS_REQUIRED,
+} from '../src/config/constants.ts'
+import {
   checksumOf,
   documentBody,
   emptyDocument,
   filledSections,
+  outline,
   parseDocument,
   renderDocument,
   stampFrontMatter,
@@ -70,9 +75,14 @@ test('rewriting a section with a new body replaces it in place', () => {
   assert.match(renderDocument(edited.doc), /## Contexto\n\nOtro contexto\./)
 })
 
-test('a new canonical section lands in its canonical place', () => {
+test('a new canonical section lands in its canonical place when an order is given', () => {
   const doc = parseDocument(canonical)
-  const withFindings = upsertSection(doc, 'Hallazgos', 'El SDK devuelve 200 con cuerpo vacío.')
+  const withFindings = upsertSection(
+    doc,
+    'Hallazgos',
+    'El SDK devuelve 200 con cuerpo vacío.',
+    LEGACY_ENTRY_DOC_SECTIONS,
+  )
   assert.equal(withFindings.created, true)
   assert.deepEqual(
     withFindings.doc.sections.map((section) => section.heading),
@@ -80,10 +90,19 @@ test('a new canonical section lands in its canonical place', () => {
   )
 })
 
-test('a section outside the canonical list goes to the end', () => {
+test('a section outside the given order goes to the end', () => {
   const doc = parseDocument(canonical)
-  const extra = upsertSection(doc, 'Resumen', 'Nota antigua en prosa.')
+  const extra = upsertSection(doc, 'Resumen', 'Nota antigua en prosa.', LEGACY_ENTRY_DOC_SECTIONS)
   assert.equal(extra.doc.sections.at(-1)?.heading, 'Resumen')
+})
+
+test('without an order a new section appends and never reorders what is already there', () => {
+  const doc = parseDocument(canonical)
+  const before = doc.sections.map((section) => section.heading)
+  const added = upsertSection(doc, 'Hallazgos', 'El SDK devuelve 200 con cuerpo vacío.')
+
+  assert.equal(added.created, true)
+  assert.deepEqual(added.doc.sections.map((section) => section.heading), [...before, 'Hallazgos'])
 })
 
 test('text written by hand outside the sections survives', () => {
@@ -111,8 +130,15 @@ test('a document with no front matter still parses', () => {
   assert.equal(doc.sections.length, 1)
 })
 
-test('a fresh document carries only the sections that are always required', () => {
+test('a fresh document carries no sections at all', () => {
   const doc = emptyDocument(new Map([['entryId', '7']]), 'Algo nuevo')
+  assert.deepEqual(doc.sections, [])
+  assert.equal(renderDocument(doc).includes('## '), false)
+  assert.equal(renderDocument(doc).includes('# Algo nuevo'), true)
+})
+
+test('a seeded document carries the headings it was seeded with', () => {
+  const doc = emptyDocument(new Map([['entryId', '7']]), 'Algo nuevo', LEGACY_ENTRY_DOC_SECTIONS_REQUIRED)
   assert.deepEqual(
     doc.sections.map((section) => section.heading),
     ['Contexto', 'Qué se hizo', 'Pendiente'],
