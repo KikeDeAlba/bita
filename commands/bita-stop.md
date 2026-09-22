@@ -1,48 +1,70 @@
 ---
-description: Para un cronómetro de bita cerrando el documento de lo que se hizo
+description: Actualiza la documentación del trabajo y después para el cronómetro
 argument-hint: [id, vacío si solo hay uno, o "all"]
-allowed-tools: Bash(bita stop:*), Bash(bita ls:*), Bash(bita note:*), Read, Write, Edit
+allowed-tools: Bash(bita stop:*), Bash(bita ls:*), Bash(bita docs:*), Bash(bita note:*), Read, Write, Edit
 ---
 
 Corriendo ahora mismo:
 
 !`bita ls`
 
-Para el cronómetro y **cierra el documento de lo que realmente se hizo**. Ese
-documento acaba en la descripción del issue de Jira, así que es la parte que
-importa: sin él el issue queda con un título y nada más.
+**Parar es el último paso, no el primero.** Antes va la documentación: es lo que
+acaba en la descripción del issue de Jira, y una vez parado el cronómetro ya no
+te acuerdas del porqué. Sin ella el issue queda con un título y nada más.
 
 **Cuál parar.** `$ARGUMENTS` manda. Si viene vacío:
 
 - Un solo cronómetro corriendo → ese.
 - Varios → **pregúntame cuál**, listándolos con su id y su tiempo. No adivines:
-  el documento que vas a cerrar pertenece a un trabajo concreto y colgarlo del
-  equivocado lo vuelve mentira.
+  la página que vas a actualizar pertenece a un trabajo concreto y colgarla del
+  equivocado la vuelve mentira.
 - Si viene `all`, para todos con `bita stop --all` y **no escribas ningún
   `--did`**: un bloque pertenece a un solo trabajo.
 
-**Lo que pasó** va en una línea o dos, en pasado, al parar:
+## 1. Primero, la página
+
+Mira qué dice hoy y actualízala con lo que cambió en este bloque:
+
+```
+bita docs page show <pageId>
+bita docs page write <pageId> --md <archivo> [--section "<H2>"]
+```
+
+La página cuenta **cómo está algo ahora**, en presente. Concretamente:
+
+- Lo que ibas a escribir como «Verificación» se dice como **cómo se verifica
+  hoy**, con el comando y el resultado real, sustituyendo lo que dijera antes.
+- Lo que ibas a dejar en «Pendiente» se convierte en un **límite conocido** de la
+  página o en un issue de Jira, nunca en un TODO enterrado en la prosa.
+- Lo que dejó de ser cierto **se reescribe**, no se corrige debajo.
+
+Si la página no se tocó en todo el bloque, escríbela ahora: qué es, cómo
+funciona y cómo se verifica. Si el bloque no tiene página todavía, créala:
+
+```
+bita docs page new "<título>" --project <X> [--parent <id>]
+bita docs page link <pageId> --entry <id>
+```
+
+Nada de prosa por `argv`: el quoting se rompe y el texto queda en `ps`. El
+cuerpo entra siempre por `--md <archivo>`.
+
+**Relee antes de seguir.** Que no lleve secretos, rutas absolutas con nombres
+internos ni pegotes de log. Y pásale la prueba de olfato de la skill: nada de
+«se acordó con el usuario», «según lo solicitado», «decidimos» ni «creo que».
+Lo van a leer otros en Jira.
+
+## 2. Después, parar
 
 ```
 bita stop <id> --did "<qué pasó en este bloque>"
 ```
 
-El resultado, no la edición. La fecha y la duración no se escriben: ya están
-medidas.
+Una línea o dos, en pasado, el resultado y no la edición. La fecha y la duración
+no se escriben: ya están medidas.
 
-**Y una última pasada por la página.** Lo que antes ibas a escribir como
-«Verificación» se dice ahora en presente, como se verifica hoy, sustituyendo lo
-que dijera antes. Lo que ibas a dejar en «Pendiente» se convierte en un límite
-conocido de la página o en un issue de Jira, nunca en un TODO enterrado en la
-prosa.
+**Si la página no cambió, dilo en voz alta antes de parar**: o no aprendiste nada
+en dos horas, o aprendiste algo y no lo escribiste. Casi siempre es lo segundo.
 
-Si la página no se tocó en todo el bloque, escríbela ahora: qué es, cómo
-funciona y cómo se verifica.
-
-**Antes de cerrar, relee la página.** Que no lleve secretos, rutas absolutas con nombres
-internos ni pegotes de log. Y pásale la prueba de olfato de la skill: nada de
-«se acordó con el usuario», «según lo solicitado», «decidimos» ni «creo que».
-Lo van a leer otros en Jira.
-
-Responde con el id, el título, el tiempo que quedó registrado, la página a la
-que quedó colgado y, si siguen corriendo otros, cuáles.
+Responde con el id, el título, el tiempo que quedó registrado, qué cambió en la
+página y, si siguen corriendo otros, cuáles.
