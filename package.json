@@ -1,18 +1,45 @@
 {
-  "name": "bita-cli",
+  "name": "@kikedealba/bita",
   "version": "0.4.0",
-  "private": true,
+  "description": "Registro de tiempo local que documenta el trabajo y lo vuelca a Jira, con su integracion para Claude Code.",
+  "license": "MIT",
+  "author": "Jesus Enrique De Alba Gaytan",
+  "homepage": "https://github.com/KikeDeAlba/bita-cli#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KikeDeAlba/bita-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/KikeDeAlba/bita-cli/issues"
+  },
+  "keywords": [
+    "time-tracking",
+    "jira",
+    "worklog",
+    "documentation",
+    "claude-code",
+    "cli",
+    "sqlite"
+  ],
   "type": "module",
   "packageManager": "pnpm@11.22.0",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=24"
   },
   "bin": {
     "bita": "./src/bin/bita.ts"
   },
   "files": [
-    "src"
+    "src",
+    "skill",
+    "commands",
+    "scripts",
+    "README.md",
+    "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/**/*.test.ts\"",

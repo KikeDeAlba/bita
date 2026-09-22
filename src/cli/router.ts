@@ -10,6 +10,8 @@ import { runScope } from './commands/scope.ts'
 import { runAmend } from './commands/amend.ts'
 import { runDelete } from './commands/delete.ts'
 import { runDocs } from './commands/docs.ts'
+import { runApp } from './commands/app.ts'
+import { runSetup } from './commands/setup.ts'
 import { runNote } from './commands/note.ts'
 import { runNotes } from './commands/notes.ts'
 import { runHook } from './commands/hook.ts'
@@ -54,6 +56,10 @@ Documents:
   docs page rm <id>          Forget the page; the .md stays on disk
   docs migrate [--yes]       Turn every entry document into a page
   docs migrate --undo        Put the corpus back as it was
+
+  setup                      Link the skill and the slash commands into Claude
+  app install                Download and install the desktop app
+  app version                What is installed, and what the latest release is
 
 Reporting:
   entries [preset]           List time entries
@@ -185,6 +191,10 @@ export async function route(argv: string[]): Promise<number> {
       return runDelete(rest)
     case 'docs':
       return runDocs(rest)
+    case 'app':
+      return runApp(rest)
+    case 'setup':
+      return runSetup(rest)
     case 'note':
       return runNote(rest)
     case 'notes':
