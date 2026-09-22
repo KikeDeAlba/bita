@@ -36,10 +36,18 @@ import {
 import { createLocalContext, type LocalContext } from '../local-context.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
 import { resolveProjectArg } from '../project-arg.ts'
+import { copyFile } from 'node:fs/promises'
+import { migratePages, undoMigration } from '../../docs/migrate-pages.ts'
+import { pageTree, runDocsPage } from './docs-page.ts'
+import { readConfig } from '../../state/config.ts'
 
 const OPTIONS = {
   project: { type: 'string' as const },
   months: { type: 'boolean' as const, default: false },
+  pages: { type: 'boolean' as const, default: false },
+  'dry-run': { type: 'boolean' as const, default: false },
+  yes: { type: 'boolean' as const, default: false },
+  undo: { type: 'boolean' as const, default: false },
   all: { type: 'boolean' as const, default: false },
   'with-doc': { type: 'boolean' as const, default: false },
   limit: { type: 'string' as const },
@@ -56,7 +64,7 @@ const OPTIONS = {
   'max-scan-bytes': { type: 'string' as const },
 }
 
-const SUBCOMMANDS = new Set(['tree', 'ls', 'show', 'search'])
+const SUBCOMMANDS = new Set(['tree', 'ls', 'show', 'search', 'page', 'migrate'])
 
 const DEFAULT_LIST_LIMIT = 50
 const DEFAULT_SEARCH_LIMIT = 30
@@ -67,12 +75,15 @@ export async function runDocs(argv: string[]): Promise<number> {
     throw new UsageError(`Usage: bita docs <${[...SUBCOMMANDS].join('|')}>`)
   }
 
+  if (first === 'page') return await runDocsPage(argv.slice(1))
+  if (first === 'migrate') return await runMigrate(argv.slice(1))
+
   const args = parseCommandArgs(argv.slice(1), OPTIONS, { ...BASE_OPTIONS, ...RANGE_OPTIONS })
   const json = readBoolean(args, 'json')
   const ctx = createLocalContext(args)
 
   try {
-    if (first === 'tree') return runTree(ctx, args, json)
+    if (first === 'tree') return await runTree(ctx, args, json)
     if (first === 'ls') return await runList(ctx, args, json)
     if (first === 'show') return await runShow(ctx, args, json)
     return await runSearch(ctx, args, json)
@@ -214,7 +225,7 @@ function warningsFor(counts: FileTally): string[] {
   return warnings
 }
 
-function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): number {
+async function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): Promise<number> {
   const wantsMonths = readBoolean(args, 'months')
   const includesEmpty = readBoolean(args, 'all')
   const counts = docCountsByProject(ctx.db)
@@ -255,12 +266,16 @@ function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): number {
     }
   }
 
+  const wantsPages = readBoolean(args, 'pages')
+  const spaces = wantsPages ? await spacesWithPages(ctx, projects) : null
+
   const totals = docCorpusTotals(ctx.db)
   const meta = {
     root: ctx.docsRoot,
     timezone: ctx.timezone,
     sections: [...LEGACY_ENTRY_DOC_SECTIONS],
     includesEmpty,
+    layout: wantsPages ? 'hierarchical' : 'legacy',
     totals: {
       projectCount: projects.length,
       entryCount: totals.entryCount,
@@ -273,7 +288,7 @@ function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): number {
   }
 
   if (json) {
-    writeJson(successEnvelope('docs tree', { projects }, meta))
+    writeJson(successEnvelope('docs tree', spaces === null ? { projects } : { projects, spaces }, meta))
     return 0
   }
 
@@ -282,6 +297,126 @@ function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): number {
     writeOut(`${String(project.docCount).padStart(4)} / ${String(project.entryCount).padEnd(4)} ${project.projectName ?? 'sin proyecto'}`)
   }
   return 0
+}
+
+async function runMigrate(argv: string[]): Promise<number> {
+  const args = parseCommandArgs(argv, OPTIONS, BASE_OPTIONS)
+  const json = readBoolean(args, 'json')
+  const ctx = createLocalContext(args)
+
+  try {
+    if (readBoolean(args, 'undo')) {
+      const report = await undoMigration(ctx)
+      if (json) {
+        writeJson(successEnvelope('docs migrate', report, { root: ctx.docsRoot }))
+        return 0
+      }
+      if (report.batch === null) {
+        writeOut('There is no migration to undo.')
+        return 0
+      }
+      writeOut(`Removed ${report.pagesRemoved} page(s) and ${report.filesRemoved} file(s).`)
+      for (const kept of report.filesKept) writeOut(`Kept (edited since): ${kept}`)
+      return 0
+    }
+
+    const apply = readBoolean(args, 'yes') && !readBoolean(args, 'dry-run')
+    if (apply) await backupDatabase(ctx)
+
+    const projectRaw = readString(args, 'project')
+    const report = await migratePages(ctx, {
+      dryRun: !apply,
+      ...(projectRaw !== undefined ? { projectId: resolveProjectArg(ctx.db, projectRaw).id } : {}),
+      ...(readInteger(args, 'limit') !== undefined ? { limit: readInteger(args, 'limit') as number } : {}),
+      siteUrl: (await readConfig()).jira?.siteUrl,
+    })
+
+    if (json) {
+      writeJson(successEnvelope('docs migrate', report, { root: ctx.docsRoot, applied: apply }))
+      return 0
+    }
+
+    writeOut(
+      apply
+        ? `Made ${report.migrated.length} page(s) out of ${report.scanned} document(s).`
+        : `Would make ${report.migrated.length} page(s) out of ${report.scanned} document(s). Pass --yes to do it.`,
+    )
+    for (const page of report.migrated) writeOut(`  ${page.title}  ->  ${page.relPath}`)
+    for (const skip of report.skipped) writeOut(`  #${skip.entryId} skipped: ${skip.reason}`)
+    return 0
+  } finally {
+    ctx.db.close()
+  }
+}
+
+async function backupDatabase(ctx: LocalContext): Promise<void> {
+  if (ctx.databasePath === ':memory:') return
+  const stamp = ctx.now.toISOString().replace(/[:.]/g, '-')
+  await copyFile(ctx.databasePath, `${ctx.databasePath}.bak-${stamp}`)
+}
+
+export function withPagedProjects(
+  projects: readonly SpaceProject[],
+  pagedProjectIds: readonly (number | null)[],
+  lookup: (projectId: number) => { name: string; active: boolean } | undefined,
+): SpaceProject[] {
+  const spaces = [...projects]
+  const known = new Set(projects.map((project) => project.projectId))
+
+  for (const projectId of pagedProjectIds) {
+    if (known.has(projectId)) continue
+    known.add(projectId)
+    const project = projectId === null ? undefined : lookup(projectId)
+    spaces.push({
+      projectId,
+      projectName: project?.name ?? null,
+      projectSlug: projectSlug(project?.name ?? null),
+      active: project?.active ?? true,
+      entryCount: 0,
+    })
+  }
+  return spaces
+}
+
+export interface SpaceProject {
+  projectId: number | null
+  projectName: string | null
+  projectSlug: string
+  active: boolean
+  entryCount: number
+}
+
+async function spacesWithPages(ctx: LocalContext, projects: readonly SpaceProject[]): Promise<unknown[]> {
+  const pageCtx = { ...ctx, siteUrl: (await readConfig()).jira?.siteUrl }
+  const roots = pageTree(pageCtx)
+
+  const byProject = new Map<number | null, ReturnType<typeof pageTree>>()
+  for (const page of roots) {
+    const list = byProject.get(page.projectId) ?? []
+    list.push(page)
+    byProject.set(page.projectId, list)
+  }
+
+  const countPages = (list: ReturnType<typeof pageTree>): number =>
+    list.reduce((total, page) => total + 1 + countPages(page.children ?? []), 0)
+
+  const catalogue = listProjects(ctx.db, false)
+  const spaces = withPagedProjects(projects, [...byProject.keys()], (id) =>
+    catalogue.find((row) => row.id === id),
+  )
+
+  return spaces.map((project) => {
+    const pages = byProject.get(project.projectId) ?? []
+    return {
+      projectId: project.projectId,
+      projectName: project.projectName,
+      projectSlug: project.projectSlug,
+      active: project.active,
+      entryCount: project.entryCount,
+      pageCount: countPages(pages),
+      pages,
+    }
+  })
 }
 
 interface MonthCount {

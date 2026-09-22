@@ -41,8 +41,7 @@ concéntrate en el porqué.
 Si hay que corregir algo del documento, léelo y edítalo en su sitio:
 
 ```
-bita note path <id>
-bita note save <id>
+bita docs page write <pageId> --md <archivo>
 ```
 
 Antes de guardar, revisa que no lleve secretos ni rutas internas: acaba en un

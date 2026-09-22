@@ -1,10 +1,15 @@
 import { stat } from 'node:fs/promises'
-import type { EntryDocRow } from '../db/docs.ts'
 import { checksumOf } from './markdown.ts'
 import { resolveDocPath } from './paths.ts'
 import { readRaw } from './store.ts'
 
 export type DocFileStatus = 'ok' | 'changed' | 'missing' | 'unverified'
+
+export interface DocFileRef {
+  relPath: string
+  checksum: string
+  byteSize: number
+}
 
 export interface DocFileState {
   status: DocFileStatus
@@ -27,7 +32,7 @@ export interface InspectOptions {
 
 export async function inspectDocFile(
   docsRoot: string,
-  row: EntryDocRow,
+  row: DocFileRef,
   options: InspectOptions = {},
 ): Promise<InspectedDoc> {
   const verify = options.verify ?? true

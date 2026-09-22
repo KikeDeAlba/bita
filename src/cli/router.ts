@@ -39,9 +39,21 @@ Tracking:
 
 Documents:
   docs tree [--months]       Projects with their document and entry counts
+  docs tree --pages          The same, plus the page tree of every space
   docs ls [--project X]      Entries and their documents, newest first
   docs show <id|--path P>    One document: markdown, front matter, sections
   docs search "<text>"       Search every document, with snippets
+  docs page ls [--tree]      Pages, flat or as the tree
+  docs page show <id>        One page: outline, tasks, work log, subpages
+  docs page new "<title>"    A page in a space, or under --parent
+  docs page write <id>       Write the body, or one --section, from --md
+  docs page rename <id> "<t>"
+  docs page move <id> [--parent <id|->] [--position N]
+  docs page link <id>        Tie entries or Jira issues to the page
+  docs page unlink <id>      Untie them
+  docs page rm <id>          Forget the page; the .md stays on disk
+  docs migrate [--yes]       Turn every entry document into a page
+  docs migrate --undo        Put the corpus back as it was
 
 Reporting:
   entries [preset]           List time entries

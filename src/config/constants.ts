@@ -42,6 +42,8 @@ export const LEGACY_ENTRY_DOC_SECTIONS: readonly string[] = [
 
 export const LEGACY_ENTRY_DOC_SECTIONS_REQUIRED: readonly string[] = ['Contexto', 'Qué se hizo', 'Pendiente']
 
+export const DID_MAX = 280
+
 export const DOC_LOCK_TIMEOUT_MS = 2_000
 export const DOC_LOCK_STALE_MS = 30_000
 

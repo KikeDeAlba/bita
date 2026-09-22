@@ -29,12 +29,12 @@ Mira la tabla de arriba: si el bloque pisa horas que ya están registradas, dilo
 El solape está permitido, pero casi siempre aquí significa que la hora está mal.
 
 Si tienes contexto real de lo que se hizo, escribe también el documento. Para un
-bloque que ya pasó son **Contexto, Qué se hizo y Pendiente, y nada más**: nadie
-ha comprobado nada ahora, así que no inventes una Verificación.
+bloque que ya pasó se cuenta con **`--did`, y nada más**: nadie ha comprobado
+nada ahora, así que no inventes una verificación. La página se toca solo si
+cambió lo que documenta.
 
 ```
-bita note path <id> --create
-bita note save <id>
+bita docs page write <pageId> --md <archivo>
 ```
 
 Si no tienes ese contexto, **no lo inventes**: es mejor un issue sin descripción

@@ -37,7 +37,7 @@ es tarea tuya:
    bita amend --draft --title "<titulo corto>" --project <nombre o id>
    ```
 3. Al terminar el plan, escribe el primer checkpoint del documento con lo que
-   concluyó: `bita note path <id> --create`, edítalo, `bita note save <id>`.
+   concluyó: `bita docs page write <id> --md <archivo>`, y al parar `--did`.
 
 El título es la clave de agrupación y el summary del issue, así que corto y
 reconocible. Un borrador sin título queda fuera de `summary`, o sea que si no lo
@@ -339,7 +339,7 @@ ofrece asignarles uno solo para esta corrida, o dejarlas pendientes.
 Antes de crear nada:
 
 1. Elige el tema de la lista cerrada. La señal más fuerte es el **documento**
-   del grupo (`docs[]`): «Contexto» dice por qué se hizo y «Tocado» con qué.
+   del grupo (`pages[]`, o `docs[]` en el trabajo anterior a las páginas).
    Después el título, el repo y la rama. El proyecto acota, no decide.
 2. ¿`jiraStories[themeId]` ya tiene una key? → úsala, sin buscar.
 3. Si no, trae las Historias de la épica y **empata por igualdad exacta
@@ -409,27 +409,32 @@ de cada grupo, este orden, sin paralelismo:
    `issueTypeName` va por **nombre**, no por id.
    - `summary`: el del grupo, **literal**, sin reescribir. Es la clave de
      agrupación y lo que el usuario reconocerá al buscar.
-   - `description`: se **construye** desde `docs[]`, no se copia. Quita el front
-     matter y quita el H1 —el H1 es el summary y repetirlo es ruido— y deja las
-     secciones en su orden, omitiendo las vacías. En «Tocado», los archivos
-     salen de `touchedFiles` del grupo, no del documento. **No añadas una tabla de
-     bloques ni los ids de las entradas**: el tiempo ya está en los worklogs y el
-     rastro en su `commentBody`, y repetirlo en la descripción la convierte en un
-     recibo en vez de en documentación. Si un documento viene con
-     `markdown: null` y `truncated: true`, léelo de su `path` con Read. Un grupo
-     sin documento pero con archivos tocados da solo «Tocado».
+   - `description`: sale de **`pages[]`**, el cuerpo de las páginas que documentan
+     el grupo. Ya viene sin front matter y sin H1 —el H1 es el summary y
+     repetirlo es ruido—. Los archivos tocados, si aportan, salen de
+     `touchedFiles` del grupo. **No añadas una tabla de bloques ni los ids de las
+     entradas**: el tiempo ya está en los worklogs y el rastro en su
+     `commentBody`, y repetirlo convierte la descripción en un recibo en vez de
+     en documentación.
      **Antes de enviarla, pásale la prueba de olfato**: es el texto que verán
      otros.
 
-     **Con varios documentos en un grupo no los concatenes**, que produciría
-     siete «Contexto» seguidos. Se funden sección por sección, en orden
-     cronológico: Contexto el del más antiguo; Qué se hizo, Decisiones y
-     Hallazgos en unión sin duplicados; Verificación, **el último resultado**
-     por comprobación, porque una prueba que falló el martes y pasó el jueves se
-     publica como pasó; Pendiente en unión **menos lo que un documento posterior
-     ya resolvió**, porque un pendiente resuelto que llega a Jira manda a
-     alguien a rehacer trabajo hecho. Si dos se contradicen, gana el posterior y
-     el anterior se cae.
+     **Con varias páginas en un grupo no las concatenes a ciegas**: van en orden,
+     cada una bajo su título como `##`, y lo que se repita entre ellas se dice
+     una vez.
+
+     `docs[]` sigue llegando para el trabajo anterior a las páginas, que todavía
+     tiene documento por entrada. Si un grupo trae `docs[]` y no `pages[]`, usa
+     aquél: sus secciones en su orden, omitiendo las vacías, y si viene con
+     `markdown: null` y `truncated: true`, léelo de su `path` con Read. Al fundir
+     varios documentos viejos: Contexto el del más antiguo; Qué se hizo,
+     Decisiones y Hallazgos en unión sin duplicados; Verificación, **el último
+     resultado** por comprobación, porque una prueba que falló el martes y pasó
+     el jueves se publica como pasó; Pendiente en unión **menos lo que un
+     documento posterior ya resolvió**. Si dos se contradicen, gana el posterior.
+
+     Un grupo sin página y sin documento, pero con archivos tocados, da solo la
+     lista de lo tocado.
    - `assignee`: **siempre**, con el `accountId` del paso 0. Es la única pieza
      del payload que Jira no deduce de nada y que nadie echa en falta hasta que
      busca su propio trabajo y no lo encuentra.
@@ -526,82 +531,96 @@ el usuario encima cuenta; si se fue, no. Ante la duda, pregunta antes de parar.
 Con varios corriendo, `bita ls` los enseña con su id. Para saber qué hay abierto
 antes de proponer nada, míralo: es gratis.
 
-### El documento de la entrada
+### La página
 
-Cada entrada tiene un documento en markdown. Vive bajo la raíz de documentos, en
-espejo del proyecto: `<proyecto>/<año>/<mes>/<día>-<id>-<titulo>.md`. La base de
-datos guarda su **ruta**, no su texto, así que el archivo es el original y se
-puede abrir, mover de máquina o respaldar por su cuenta.
+La unidad de documentación es la **página**, no el bloque de tiempo. Una página
+cuenta **cómo está algo hoy**, en presente. Las páginas cuelgan de un espacio
+—que es el proyecto— y pueden anidarse:
+
+```
+bita docs page new "<título>" --project <X> [--parent <id>]
+bita docs page show <id>
+bita docs page write <id> --md <archivo> [--section "<H2>"]
+bita docs page link <id> --issue <KEY> --summary "…" --status "…" --status-category <cat>
+```
 
 **La ruta la da el CLI, nunca la inventes.** Corren varios cronómetros a la vez
-y varias sesiones a la vez: una ruta fija sería dos sesiones escribiendo el
-mismo archivo y dos trabajos distintos acabando en el mismo issue.
+y varias sesiones a la vez.
+
+**No hay secciones obligatorias ni un orden fijo.** Los encabezados los pide el
+contenido: si la página habla de credenciales, un encabezado será «Dónde viven»
+y otro «Cómo llegan al contenedor». Como orientación y no como lista a rellenar,
+suelen aparecer: qué es, cómo funciona, qué se decidió y sigue vigente, qué
+límites tiene, cómo se verifica. Una sección con «N/A» es ruido: si no hay nada
+que decir, no existe el encabezado.
+
+**Cuando algo deja de ser cierto se reescribe, no se añade una corrección
+debajo.** Una página que acumula «actualización: ya no es así» deja de servir
+para lo que existe. Nada de entradas fechadas en el cuerpo, nada de «hoy hice»:
+para eso está el registro.
+
+GFM plano, más tablas y bloques ```mermaid```. Sin macros ni HTML. El H1 igual al
+título.
+
+### El registro de trabajo
+
+Lo que pasó en cada bloque **no va al cuerpo de la página**. Va en una línea o
+dos, en pasado, al parar:
 
 ```
-bita note path <id> --create   la ruta, creando el esqueleto si no existe
-bita note save <id>            registrarlo después de editarlo
+bita start "<título>" --page <id>        el bloque nace colgado de su página
+bita stop <id> --did "<qué pasó>"        y se cierra diciendo qué pasó
+bita log --from … --for … --did "…"      lo mismo para un bloque ya pasado
 ```
 
-El CLI estampa por su cuenta el proyecto, el día, el inicio, el fin, la duración,
-el repositorio y la rama. Tú escribes el cuerpo y nada más. Las secciones son
-estas, y en este orden:
+`--did` describe el **resultado**, no la edición. La fecha y la duración no se
+escriben: ya están medidas.
 
-| Sección | Qué responde |
-|---|---|
-| **Contexto** | Por qué existió esto. Lo único que no se reconstruye del diff |
-| **Qué se hizo** | Qué cambió. Viñetas de resultado, no de edición |
-| **Decisiones** | Por qué así y no de la otra forma, con la alternativa descartada |
-| **Hallazgos** | Qué no era obvio: comportamiento raro, límite del entorno, causa raíz |
-| **Verificación** | Comando → resultado real. No «pasó» |
-| **Pendiente** | Qué falta, qué falló, el siguiente paso |
-| **Tocado** | Comandos y recursos. Los archivos los registra el hook, no los repitas |
+La regla que decide entre los dos: **si lo que acabas de hacer cambia cómo se
+describe el sistema, edita la página; si sólo cuenta lo que pasó, va a `--did`.**
 
-Contexto, Qué se hizo y Pendiente van siempre. Decisiones y Hallazgos se omiten
-enteras si están vacías: una sección con «N/A» es ruido. GFM plano, sin macros
-ni HTML, y el H1 igual al título.
+Y la que dice si el bloque valió: **si al cerrarlo la página no cambió, o no
+aprendiste nada, o no lo escribiste.**
 
-### Checkpoints: escribir mientras el reloj corre
+### Mientras el reloj corre
 
-**El documento no se escribe al parar.** Al parar ya no te acuerdas del porqué,
-y el porqué es la mitad del valor.
+**La página se edita mientras trabajas, no al parar.** Al parar ya no te
+acuerdas del porqué, y el porqué es la mitad del valor.
 
-Escribe un checkpoint al cerrar un paso que dejó algo en disco, al terminar una
-verificación —saliera bien o mal—, al cambiar de enfoque, al encontrar algo no
-obvio, y cuando algo quede fuera. El de «cambiar de enfoque» es el que más se
-olvida y el único que no se puede reconstruir después.
+Toca la página cuando cierres un paso que dejó algo en disco, cuando termines
+una verificación —y entonces deja escrito cómo se verifica **ahora**,
+sustituyendo lo que dijera antes—, cuando cambies de enfoque —reescribiendo la
+decisión vigente, con la descartada en una línea si aclara algo— y cuando
+descubras algo no obvio del entorno, que es estado del mundo y por tanto de la
+página.
 
-No escribas uno por cada edición: se documenta el resultado, no la edición. Un
-bloque de dos horas sano tiene entre tres y seis checkpoints; si llevas doce,
-estás narrando la sesión. Uno cabe en una a tres viñetas.
-
-Añade **a la sección que toque** —un hallazgo va a Hallazgos aunque estuvieras
-editando código— y no reescribas lo anterior salvo que resultara falso.
+No un encabezado por cada cosa: crea uno nuevo sólo si vas a volver al mismo
+tema tres veces. Y nada de prosa por `argv` —el quoting se rompe y el texto
+queda en `ps`—: el cuerpo entra por `--md <archivo>`.
 
 El hook `checkpoint` avisa cuando un cronómetro lleva tres archivos tocados o
-cuarenta y cinco minutos sin documentar, y se calla solo en cuanto lo guardas.
+cuarenta y cinco minutos sin documentar, y se calla en cuanto la página cambia.
 
 ### Parar
 
-Cierra el documento —completando Verificación y Pendiente, que solo se pueden
-escribir al final— y para:
-
 ```
-bita note save <id>
-bita stop <id>
+bita stop <id> --did "<qué pasó en este bloque>"
 ```
 
 **Pasa siempre el id cuando haya más de uno corriendo.** Sin id y con varios
 abiertos, `stop` falla con `AMBIGUOUS_TIMER` en vez de adivinar. `--all` los para
-todos, pero entonces no se cierra ningún documento: un documento pertenece a un
+todos, pero entonces no se escribe ningún `--did`: un bloque pertenece a un
 trabajo.
 
-Nada de prosa por `argv`: el quoting se rompe y el texto queda en `ps`. El
-documento se edita como archivo, siempre.
+Antes de parar, una última pasada por la página: lo que antes era «Verificación»
+se dice en presente, como se verifica hoy; lo que era «Pendiente» se convierte en
+un límite conocido de la página o en un issue de Jira, nunca en un TODO enterrado
+en la prosa. Si la página no se tocó en todo el bloque, escríbela ahora.
 
-**El documento acaba en la descripción de un issue de Jira que verán otros.**
-Antes de guardarlo, revisa que no lleve rutas absolutas con nombres internos,
-secretos ni pegotes de log, y pásale la prueba de olfato de «Cómo se escribe lo
-que se publica».
+**La página acaba en la descripción de un issue de Jira que verán otros.** Antes
+de guardarla, revisa que no lleve rutas absolutas con nombres internos, secretos
+ni pegotes de log, y pásale la prueba de olfato de «Cómo se escribe lo que se
+publica».
 
 ## Manejo de fallos
 

@@ -68,7 +68,7 @@ test('rejects an entry that stops before it starts', () => {
 
 test('replaces the dead notes table with one that points at documents', () => {
   const db = openMemoryDatabase()
-  assert.equal(LATEST_VERSION, 3)
+  assert.equal(LATEST_VERSION, 4)
 
   const tables = db
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
@@ -76,6 +76,20 @@ test('replaces the dead notes table with one that points at documents', () => {
     .map((row) => (row as { name: string }).name)
 
   assert.equal(tables.includes('notes'), false)
+  assert.equal(tables.includes('entry_docs'), true)
+  db.close()
+})
+
+test('the page tables arrive without disturbing entry_docs', () => {
+  const db = openMemoryDatabase()
+  const tables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+    .all()
+    .map((row) => (row as { name: string }).name)
+
+  assert.equal(tables.includes('doc_pages'), true)
+  assert.equal(tables.includes('page_entries'), true)
+  assert.equal(tables.includes('page_issues'), true)
   assert.equal(tables.includes('entry_docs'), true)
   db.close()
 })
