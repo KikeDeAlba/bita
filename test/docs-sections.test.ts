@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { DOC_SECTIONS } from '../src/config/constants.ts'
+import { LEGACY_ENTRY_DOC_SECTIONS } from '../src/config/constants.ts'
 import { parseDocument, sectionStates } from '../src/docs/markdown.ts'
 
 const mixed = `---
@@ -26,15 +26,15 @@ Se portó el mecanismo de credenciales temporales.
 `
 
 test('always returns the seven canonical sections in order', () => {
-  const states = sectionStates(parseDocument(mixed))
+  const states = sectionStates(parseDocument(mixed), LEGACY_ENTRY_DOC_SECTIONS)
   assert.deepEqual(
     states.filter((section) => section.canonical).map((section) => section.heading),
-    [...DOC_SECTIONS],
+    [...LEGACY_ENTRY_DOC_SECTIONS],
   )
 })
 
 test('tells written, empty and absent apart', () => {
-  const states = sectionStates(parseDocument(mixed))
+  const states = sectionStates(parseDocument(mixed), LEGACY_ENTRY_DOC_SECTIONS)
   const byHeading = new Map(states.map((section) => [section.heading, section.state]))
 
   assert.equal(byHeading.get('Contexto'), 'empty')
@@ -47,14 +47,14 @@ test('tells written, empty and absent apart', () => {
 })
 
 test('appends a non canonical heading without reordering the seven', () => {
-  const states = sectionStates(parseDocument('# Título\n\n## Notas sueltas\n\nAlgo.\n\n## Contexto\n\nOtra cosa.\n'))
+  const states = sectionStates(parseDocument('# Título\n\n## Notas sueltas\n\nAlgo.\n\n## Contexto\n\nOtra cosa.\n'), LEGACY_ENTRY_DOC_SECTIONS)
 
-  assert.equal(states.length, DOC_SECTIONS.length + 1)
+  assert.equal(states.length, LEGACY_ENTRY_DOC_SECTIONS.length + 1)
   assert.deepEqual(
-    states.slice(0, DOC_SECTIONS.length).map((section) => section.heading),
-    [...DOC_SECTIONS],
+    states.slice(0, LEGACY_ENTRY_DOC_SECTIONS.length).map((section) => section.heading),
+    [...LEGACY_ENTRY_DOC_SECTIONS],
   )
-  assert.deepEqual(states[DOC_SECTIONS.length], {
+  assert.deepEqual(states[LEGACY_ENTRY_DOC_SECTIONS.length], {
     heading: 'Notas sueltas',
     state: 'written',
     canonical: false,
@@ -62,7 +62,7 @@ test('appends a non canonical heading without reordering the seven', () => {
 })
 
 test('the first of two identical headings wins', () => {
-  const states = sectionStates(parseDocument('## Contexto\n\nLa primera.\n\n## Contexto\n'))
+  const states = sectionStates(parseDocument('## Contexto\n\nLa primera.\n\n## Contexto\n'), LEGACY_ENTRY_DOC_SECTIONS)
   const contexto = states.filter((section) => section.heading === 'Contexto')
 
   assert.equal(contexto.length, 1)
@@ -70,8 +70,8 @@ test('the first of two identical headings wins', () => {
 })
 
 test('a document without any section is seven times absent', () => {
-  const states = sectionStates(parseDocument('# Solo un título\n\nUn párrafo suelto.\n'))
+  const states = sectionStates(parseDocument('# Solo un título\n\nUn párrafo suelto.\n'), LEGACY_ENTRY_DOC_SECTIONS)
 
-  assert.equal(states.length, DOC_SECTIONS.length)
+  assert.equal(states.length, LEGACY_ENTRY_DOC_SECTIONS.length)
   assert.ok(states.every((section) => section.state === 'absent' && section.canonical))
 })
