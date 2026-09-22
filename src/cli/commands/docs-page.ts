@@ -102,8 +102,8 @@ export async function runDocsPage(argv: string[]): Promise<number> {
     if (first === 'write') return await runWrite(ctx, args, positional, json)
     if (first === 'rename') return await runRename(ctx, args, positional, json)
     if (first === 'move') return await runMove(ctx, args, positional, json)
-    if (first === 'link') return runLink(ctx, args, positional, json)
-    if (first === 'unlink') return runUnlink(ctx, args, positional, json)
+    if (first === 'link') return await runLink(ctx, args, positional, json)
+    if (first === 'unlink') return await runUnlink(ctx, args, positional, json)
     return await runRemove(ctx, args, positional, json)
   } finally {
     ctx.db.close()
@@ -451,7 +451,7 @@ async function runMove(ctx: PageContext, args: ParsedArgs, positional: string[],
   return report(ctx, 'docs page move', requirePage(ctx.db, page.id), json)
 }
 
-function runLink(ctx: PageContext, args: ParsedArgs, positional: string[], json: boolean): number {
+async function runLink(ctx: PageContext, args: ParsedArgs, positional: string[], json: boolean): Promise<number> {
   const page = pageIdArg(positional, args, ctx)
   const now = ctx.now.toISOString()
 
@@ -496,10 +496,12 @@ function runLink(ctx: PageContext, args: ParsedArgs, positional: string[], json:
     throw new UsageError('Pass --entry, --issue or --from-entries.')
   }
 
+  if (issueKey !== undefined || readBoolean(args, 'from-entries')) await restampIssues(ctx, page)
+
   return report(ctx, 'docs page link', requirePage(ctx.db, page.id), json)
 }
 
-function runUnlink(ctx: PageContext, args: ParsedArgs, positional: string[], json: boolean): number {
+async function runUnlink(ctx: PageContext, args: ParsedArgs, positional: string[], json: boolean): Promise<number> {
   const page = pageIdArg(positional, args, ctx)
 
   const entryRaw = readString(args, 'entry')
@@ -512,7 +514,15 @@ function runUnlink(ctx: PageContext, args: ParsedArgs, positional: string[], jso
 
   if (entryRaw === undefined && issueKey === undefined) throw new UsageError('Pass --entry or --issue.')
 
+  if (issueKey !== undefined) await restampIssues(ctx, page)
+
   return report(ctx, 'docs page unlink', requirePage(ctx.db, page.id), json)
+}
+
+async function restampIssues(ctx: PageContext, page: DocPageRow): Promise<void> {
+  const raw = await readRaw(resolveDocPath(ctx.docsRoot, page.relPath))
+  if (raw === null) return
+  await recordPageDoc(ctx, page)
 }
 
 async function runRemove(ctx: PageContext, args: ParsedArgs, positional: string[], json: boolean): Promise<number> {
