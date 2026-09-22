@@ -82,9 +82,11 @@ nada, así que consulta las veces que haga falta.
 2. **Resuelve todos los mapeos de proyecto antes de escribir nada.** Si a mitad
    del flujo falta uno, ya habría issues creados y la interrupción dejaría el
    trabajo a medias.
-3. **`bita link` es lo último de cada grupo.** Es el punto de commit: mientras
-   la entrada no tenga su fila, el trabajo se considera no hecho. Perder horas es
-   peor que duplicarlas, y esto es lo que evita perderlas.
+3. **`bita link` es el punto de commit de cada grupo**, y va después de todo lo
+   que toca Jira: mientras la entrada no tenga su fila, el trabajo se considera
+   no hecho. Perder horas es peor que duplicarlas, y esto es lo que evita
+   perderlas. Sólo `bita docs page link` va detrás, porque es local y no puede
+   hacer perder nada.
 4. **Nunca escribas en la base a mano.** Ni `sqlite3`, ni SQL suelto: el CLI es
    quien mantiene las invariantes (instantes en UTC, claves foráneas, ids).
 5. **No encadenes comandos** con `|`, `;` ni `&&`, y no invoques el CLI con
@@ -105,6 +107,13 @@ nada, así que consulta las veces que haga falta.
 10. **Nada de lo que se publica delata la conversación.** Los documentos y las
     descripciones de Jira se escriben como documentación técnica, no como el
     acta de un chat. Ver "Cómo se escribe lo que se publica".
+11. **Toda pregunta de opción cerrada va por `AskUserQuestion`.** Nunca escribas
+    un menú numerado en la respuesta para que el usuario conteste "1", "2" o "3":
+    la interfaz ya tiene ese menú y elegir en él es un clic, no teclear un número
+    que hay que emparejar a mano con una lista de más arriba. Aplica a la
+    confirmación del paso 7, a la elección de transición de cierre y a cualquier
+    otra disyuntiva. Lo que sigue en prosa es la lista de candidatos de una
+    búsqueda, que puede pasar de cuatro.
 
 ## Cómo se escribe lo que se publica
 
@@ -384,12 +393,17 @@ worklogs, rango de fechas y total. Debajo, lo excluido con su motivo.
 **Las tareas se cierran al terminar. No lo preguntes.** Solo se dejan abiertas si
 el usuario lo pide explícitamente, y entonces dilo en la tabla.
 
-Menú de cuatro opciones:
+La confirmación se pide con **`AskUserQuestion`**, con estas cuatro opciones:
 
-1. Confirmar y escribir.
-2. Ajustar: fusionar, partir, renombrar, cambiar proyecto o excluir grupos.
-3. Ver el detalle de un grupo: el payload literal que se enviaría.
-4. Cancelar.
+| Opción | Qué hace |
+|---|---|
+| Confirmar y escribir | Crea todo lo de la tabla, de una tacada. |
+| Ajustar | Fusionar, partir, renombrar, cambiar proyecto o excluir grupos. |
+| Ver el detalle | El payload literal de un grupo, antes de decidir. |
+| Cancelar | No se escribe nada. |
+
+La tabla de la propuesta va **antes** de la pregunta, en la respuesta: es lo que
+el usuario necesita leer para elegir, y en la pregunta no cabe.
 
 **Esta es la única parada.** Confirmado el menú, se escriben todos los grupos sin
 volver a preguntar.
@@ -458,6 +472,29 @@ de cada grupo, este orden, sin paralelismo:
    abiertas.
 5. `bita link <entryIds...> --issue <ISSUE-KEY>`, en una sola llamada por grupo.
    Es una transacción local: o quedan atadas todas o ninguna.
+6. `bita docs page link <pageId> --issue <ISSUE-KEY> --summary "<el summary del
+   issue>" --status "<el estado en que quedó>" --status-category <categoría>`,
+   **una llamada por cada página de `pages[]`**. Esto no se pregunta ni se
+   pospone: es lo que hace que la página enseñe las tareas que salieron de ella,
+   y este es el único momento en que tienes el estado a mano —después habría que
+   volver a pedírselo a Jira—. La categoría es la `to.statusCategory.key` de la
+   transición que aplicaste (`done` si lo cerraste), o la del estado en que
+   nació si lo dejaste abierto.
+
+   La relación es de muchos a muchos y por eso se ata en los dos sentidos: un
+   grupo con dos páginas ata las dos al mismo issue, y una página que ya tenía
+   issues de corridas anteriores los conserva. Repetir la llamada con la misma
+   clave **actualiza** la fila, no la duplica, así que volver a atar es seguro.
+
+   Un grupo sin `pages[]` —trabajo viejo, que sólo trae `docs[]`— no tiene página
+   donde atar: sáltalo y dilo en el resumen final, para que se vea que quedó sin
+   documentar.
+
+Al terminar, una tabla con una fila por tarea y una columna por paso —crear,
+asignar, fechar, estimar, worklog, cerrar, atar las entradas, atar la página—,
+la key enlazada y el total registrado. Debajo, lo que se saltó y por qué. Es el
+único sitio donde se ve que un paso no corrió, así que una casilla vacía se deja
+vacía: no se rellena por simetría.
 
 ### Elegir la transición de cierre
 
