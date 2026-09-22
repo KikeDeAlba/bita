@@ -39,6 +39,13 @@ jobs:
 
       - run: pnpm test
 
+      - name: install the tarball the way a person would, and run it
+        run: |
+          tarball="$(npm pack --pack-destination "$RUNNER_TEMP" --silent | tail -1)"
+          npm install -g --prefix "$RUNNER_TEMP/prefix" "$RUNNER_TEMP/$tarball"
+          cd "$RUNNER_TEMP"
+          BITA_DB_PATH="$RUNNER_TEMP/bita.db" "$RUNNER_TEMP/prefix/bin/bita" --version
+
       - run: npm publish --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
