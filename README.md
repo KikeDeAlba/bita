@@ -37,6 +37,40 @@ node -v    # debe decir v24 o más
 
 ## Instalación
 
+### Desde npm
+
+```sh
+npm install -g @kikedealba/bita
+bita setup
+bita app install
+```
+
+`bita setup` enlaza la skill y los comandos de barra en `~/.claude` apuntando al
+paquete instalado, y mete los permisos y el hook `SessionStart` en tu
+`settings.json`. Al actualizar el paquete se actualizan con él, porque son
+symlinks. `bita app install` descarga la última release del escritorio y la deja
+en `/Applications`.
+
+Node 24 o más nuevo: el CLI son archivos `.ts` que node ejecuta directo, y usa
+`node:sqlite`.
+
+### Cómo se publica
+
+Nadie publica a mano. Al publicar una release en GitHub, el workflow
+`.github/workflows/publish.yml` corre el typecheck y las pruebas, comprueba que
+el tag y la versión de `package.json` coinciden —si no, falla antes de subir
+nada— y hace `npm publish --provenance`.
+
+La procedencia ata el paquete de npm al commit y al workflow que lo construyó,
+así que cualquiera puede comprobar de dónde salió. Hace falta el secreto
+`NPM_TOKEN` en el repositorio, un token de automatización con permiso de
+escritura sobre `@kikedealba`.
+
+### Desde el repositorio
+
+Para trabajar sobre el código. El instalador enlaza contra tu clon, así que un
+`git pull` actualiza el binario, la skill y los comandos a la vez.
+
 ### 1. Clonar e instalar
 
 ```sh
