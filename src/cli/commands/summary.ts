@@ -8,6 +8,7 @@ import { successEnvelope, writeErr, writeJson, writeOut } from '../output.ts'
 import { MAX_TASK_SECONDS } from '../../config/constants.ts'
 import { NOTES_PATH, readNotes } from '../../state/notes.ts'
 import { countDocs, docsByEntry } from '../../db/docs.ts'
+import { pagesForEntries, type SummaryPage } from '../../docs/page-read.ts'
 import { loadSummaryDocs, parseNotesMode } from '../../docs/read.ts'
 import { touchesByEntry } from '../../db/touches.ts'
 import { readConfig, storyThemes } from '../../state/config.ts'
@@ -69,6 +70,8 @@ export async function runSummary(argv: string[]): Promise<number> {
       )
     }
 
+    const pagesById = skipNotes ? new Map<number, SummaryPage>() : await pagesForEntries(ctx, allEntryIds)
+
     const withMapping = groups.map((group) => {
       const mapping =
         group.projectId === null ? undefined : config.projectMapping[String(group.projectId)]
@@ -86,12 +89,21 @@ export async function runSummary(argv: string[]): Promise<number> {
         jiraWorkIssueTypeName: mapping?.workIssueTypeName ?? 'Subtarea',
         jiraIssueTypeName: mapping?.issueTypeName ?? config.defaults?.issueTypeName ?? null,
         docs: group.entryIds.flatMap((id) => loaded.byEntry.get(id) ?? []),
+        pages: [
+          ...new Map(
+            group.entryIds
+              .flatMap((id) => {
+                const page = pagesById.get(id)
+                return page ? [[page.pageId, page] as const] : []
+              }),
+          ).values(),
+        ],
         touchedFiles: [
           ...new Set(group.entryIds.flatMap((id) => touchedById.get(id) ?? [])),
         ],
         noteCoverage: {
-          withNote: group.entryIds.filter((id) => loaded.byEntry.has(id)).length,
-          withoutNote: group.entryIds.filter((id) => !loaded.byEntry.has(id)).length,
+          withNote: group.entryIds.filter((id) => loaded.byEntry.has(id) || pagesById.has(id)).length,
+          withoutNote: group.entryIds.filter((id) => !loaded.byEntry.has(id) && !pagesById.has(id)).length,
         },
       }
     })

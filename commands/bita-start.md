@@ -36,8 +36,15 @@ arranca con él:
 bita start "<título>"
 ```
 
-El comando crea también el documento de la entrada y devuelve su ruta. **No lo
-rellenes todavía**: se escribe por checkpoints, mientras el trabajo pasa, con
+Cuelga el bloque de su página desde el principio, que es lo que evita
+reconciliarlo después:
+
+```
+bita start "<título>" --page <pageId>
+bita start "<título>" --page-new "<título de la página>"
+```
+
+**No escribas la página todavía**: se edita mientras el trabajo pasa, con
 `/bita-check`.
 
 En cualquiera de los dos casos, mira la lista de arriba antes: si ya hay un
@@ -45,5 +52,5 @@ cronómetro con ese mismo título y proyecto, no arranques otro, dímelo. Si hay
 otros corriendo de otra cosa, arranca igual —bita admite varios a la vez— y
 menciónalo en una línea.
 
-Responde en una línea: el id, el título o que quedó en blanco, y la ruta del
-documento si se creó. Nada más.
+Responde en una línea: el id, el título o que quedó en blanco, y la página a la
+que quedó colgado si la hay. Nada más.

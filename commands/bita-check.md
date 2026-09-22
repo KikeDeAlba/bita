@@ -14,38 +14,37 @@ del porqué, y el porqué es la mitad del valor.
 
 **Cuál.** `$ARGUMENTS` manda. Si viene vacío y solo hay uno corriendo, ese; si
 hay varios, **pregúntame cuál**. Un checkpoint colgado del cronómetro
-equivocado convierte dos documentos en mentira.
+equivocado convierte dos páginas en mentira.
 
-**Qué entra**, y solo si es un resultado:
+**Qué haces**, según lo que acabe de pasar:
 
-- un paso cerrado que dejó algo en disco → **Qué se hizo**
-- una verificación terminada, saliera bien o mal → **Verificación**, con el
-  resultado real, no con «pasó»
-- un cambio de enfoque → **Decisiones**, con la alternativa descartada y el
-  motivo
-- algo no obvio —comportamiento raro, límite del entorno, causa raíz— →
-  **Hallazgos**
-- algo que quedó fuera o a medias → **Pendiente**
+- un paso cerrado que dejó algo en disco → actualiza la parte de la página que
+  ese paso dejó obsoleta
+- una verificación terminada → deja escrito en la página **cómo se verifica
+  ahora**, con el comando y el resultado real, sustituyendo lo que dijera antes
+- un cambio de enfoque → reescribe la decisión vigente; la descartada cabe en
+  una línea si aclara por qué
+- algo no obvio —comportamiento raro, límite del entorno, causa raíz— → es
+  estado del mundo, así que va a la página, donde un lector lo buscaría
+- algo que quedó fuera → al registro, con `--did` al parar, y a la página solo
+  si cambia lo que promete
 
 **Qué no entra.** Una edición no es un checkpoint. Los archivos tocados se
-registran solos: **no los escribas a mano**. Una a tres viñetas; si necesitas
-más, son dos checkpoints o es el resumen final disfrazado.
+registran solos: **no los escribas a mano**. Y no creas un encabezado nuevo por
+cada cosa: crea uno solo si vas a volver al mismo tema tres veces.
 
-**Cómo.** En tres pasos:
-
-```
-bita note path <id> --create
-```
-
-Lee el documento, **añade a la sección que toque** —no siempre es «Qué se
-hizo»— y no reescribas lo anterior salvo que resultara falso. Después:
+**Cómo.** La página del cronómetro, y el cuerpo por archivo:
 
 ```
-bita note save <id>
+bita docs page show <pageId>
+bita docs page write <pageId> --md <archivo> [--section "<H2>"]
 ```
 
-**Escríbelo como documentación técnica, no como acta.** Nada de «se acordó con
-el usuario», «según lo solicitado», «decidimos» ni «creo que»: esto acaba en un
-issue de Jira que leerán otros. Si no se comprobó, va a Pendiente, no atenuado.
+Nada de prosa por `argv`: el quoting se rompe y el texto queda en `ps`.
 
-Responde en una línea: a qué sección añadiste y cuántas viñetas. Nada más.
+**Escríbelo como documentación técnica, no como acta.** En presente, contando
+cómo está la cosa. Nada de «se acordó con el usuario», «según lo solicitado»,
+«decidimos» ni «creo que»: esto acaba en un issue de Jira que leerán otros. Si
+no se comprobó, no digas que sí.
+
+Responde en una línea: qué cambió en la página. Nada más.

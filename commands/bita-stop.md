@@ -18,38 +18,31 @@ importa: sin él el issue queda con un título y nada más.
 - Varios → **pregúntame cuál**, listándolos con su id y su tiempo. No adivines:
   el documento que vas a cerrar pertenece a un trabajo concreto y colgarlo del
   equivocado lo vuelve mentira.
-- Si viene `all`, para todos con `bita stop --all` y **no cierres ningún
-  documento**: un documento pertenece a un solo trabajo.
+- Si viene `all`, para todos con `bita stop --all` y **no escribas ningún
+  `--did`**: un bloque pertenece a un solo trabajo.
 
-**El documento.** Su ruta sale de `bita ls`, y si aún no existe:
+**Lo que pasó** va en una línea o dos, en pasado, al parar:
 
 ```
-bita note path <id> --create
+bita stop <id> --did "<qué pasó en este bloque>"
 ```
 
-Si ya lleva checkpoints, **ciérralo, no lo reescribas**: añade lo que falte y
-completa las dos secciones que solo se pueden escribir al final.
+El resultado, no la edición. La fecha y la duración no se escriben: ya están
+medidas.
 
-- **Verificación**: comando → resultado real. `pnpm test`: 148 pasan, 0 fallan.
-  No «pasó». Lo que no se comprobó no va aquí.
-- **Pendiente**: lo que quedó fuera, lo que falló, el siguiente paso. **Nunca
-  se deja vacía**: su ausencia se lee como «no quedó nada» y casi nunca es
-  verdad. Si de verdad no quedó nada, escríbelo.
+**Y una última pasada por la página.** Lo que antes ibas a escribir como
+«Verificación» se dice ahora en presente, como se verifica hoy, sustituyendo lo
+que dijera antes. Lo que ibas a dejar en «Pendiente» se convierte en un límite
+conocido de la página o en un issue de Jira, nunca en un TODO enterrado en la
+prosa.
 
-Si no hay ni un checkpoint, escríbelo entero ahora: Contexto, Qué se hizo,
-Verificación y Pendiente, y Decisiones y Hallazgos si las hubo.
+Si la página no se tocó en todo el bloque, escríbela ahora: qué es, cómo
+funciona y cómo se verifica.
 
-**Antes de guardar, relee.** Que no lleve secretos, rutas absolutas con nombres
+**Antes de cerrar, relee la página.** Que no lleve secretos, rutas absolutas con nombres
 internos ni pegotes de log. Y pásale la prueba de olfato de la skill: nada de
 «se acordó con el usuario», «según lo solicitado», «decidimos» ni «creo que».
 Lo van a leer otros en Jira.
 
-Después:
-
-```
-bita note save <id>
-bita stop <id>
-```
-
-Responde con el id, el título, el tiempo que quedó registrado, la ruta del
-documento y, si siguen corriendo otros, cuáles.
+Responde con el id, el título, el tiempo que quedó registrado, la página a la
+que quedó colgado y, si siguen corriendo otros, cuáles.
