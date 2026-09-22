@@ -3,6 +3,8 @@ import { projectSlug, titleSlug } from './slug.ts'
 
 export type DocKind = 'note' | 'appendix'
 
+export const MAX_PAGE_DEPTH = 4
+
 export interface DocPathInput {
   entryId: number
   startedAt: string
@@ -29,4 +31,14 @@ export function docRelPath(input: DocPathInput): string {
     month,
     `${dayOfMonth}-${input.entryId}-${slug}${suffix}.md`,
   ].join('/')
+}
+
+export interface PagePathInput {
+  projectName: string | null
+  ancestorSlugs: readonly string[]
+  slug: string
+}
+
+export function pageRelPath(input: PagePathInput): string {
+  return [projectSlug(input.projectName), ...input.ancestorSlugs, `${input.slug}.md`].join('/')
 }

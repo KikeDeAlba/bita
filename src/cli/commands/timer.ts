@@ -30,6 +30,11 @@ import type { NoteSource } from '../../state/notes.ts'
 import { findEntryWithProject } from '../../db/entries.ts'
 import { recordEntryDoc } from '../../docs/record.ts'
 import { recordTouch } from '../../db/touches.ts'
+import { insertPage, requirePage, uniqueSiblingSlug } from '../../db/pages.ts'
+import { linkEntryToPage, pageOfEntry } from '../../db/page-links.ts'
+import { pageRelPath } from '../../docs/layout.ts'
+import { titleSlug } from '../../docs/slug.ts'
+import { DID_MAX } from '../../config/constants.ts'
 import { checkpointStatus, findDocForEntry, listDocsForEntry, type CheckpointStatus } from '../../db/docs.ts'
 import { resolveDocPath } from '../../docs/paths.ts'
 import { removeDocument } from '../../docs/store.ts'
@@ -54,6 +59,55 @@ const TIMER_OPTIONS = {
   to: { type: 'string' as const },
   for: { type: 'string' as const },
   'require-running': { type: 'boolean' as const, default: false },
+  did: { type: 'string' as const },
+  page: { type: 'string' as const },
+  'page-new': { type: 'string' as const },
+}
+
+function recordDid(ctx: LocalContext, entryId: number, args: ParsedArgs): void {
+  const did = readString(args, 'did')
+  if (did === undefined) return
+
+  const link = pageOfEntry(ctx.db, entryId)
+  if (!link) {
+    throw new ConflictError(
+      `Entry #${entryId} does not belong to a page yet.`,
+      'ENTRY_WITHOUT_PAGE',
+      'bita docs page link <pageId> --entry ' + String(entryId),
+    )
+  }
+  linkEntryToPage(ctx.db, link.pageId, entryId, did.trim().slice(0, DID_MAX), ctx.now.toISOString())
+}
+
+async function attachToPage(ctx: LocalContext, entryId: number, args: ParsedArgs): Promise<number | null> {
+  const fresh = readString(args, 'page-new')
+  if (fresh !== undefined) {
+    const entry = findEntryWithProject(ctx.db, entryId)
+    const projectId = entry?.projectId ?? null
+    const slug = uniqueSiblingSlug(ctx.db, projectId, null, titleSlug(fresh))
+    const projectName = entry?.projectName ?? null
+    const id = insertPage(ctx.db, {
+      projectId,
+      parentId: null,
+      slug,
+      title: fresh.trim(),
+      relPath: pageRelPath({ projectName, ancestorSlugs: [], slug }),
+      depth: 0,
+      source: 'cli',
+      now: ctx.now.toISOString(),
+    })
+    linkEntryToPage(ctx.db, id, entryId, '', ctx.now.toISOString())
+    return id
+  }
+
+  const raw = readString(args, 'page')
+  if (raw === undefined) return null
+
+  const pageId = Number(raw)
+  if (!Number.isInteger(pageId) || pageId <= 0) throw new UsageError(`"${raw}" is not a page id.`)
+  requirePage(ctx.db, pageId)
+  linkEntryToPage(ctx.db, pageId, entryId, '', ctx.now.toISOString())
+  return pageId
 }
 
 function readTitle(args: ParsedArgs): string {
@@ -224,6 +278,7 @@ export async function runStart(argv: string[]): Promise<number> {
       now: ctx.now.toISOString(),
     })
 
+    const pageId = await attachToPage(ctx, created.id, args)
     const row = listRunning(ctx.db).find((entry) => entry.id === created.id)
     const enriched = row ? enrich(ctx, row) : null
     const docPath = isDraft ? null : await recordDoc(ctx, created.id, null, 'start', true)
@@ -238,6 +293,7 @@ export async function runStart(argv: string[]): Promise<number> {
           runningCount: countRunning(ctx.db),
           draft: isDraft,
           docPath,
+          pageId,
         }),
       )
     } else {
@@ -293,6 +349,7 @@ export async function runStop(argv: string[]): Promise<number> {
         recordArtifacts(ctx, target.id, args)
         docPath = await recordDoc(ctx, target.id, seed, 'stop', seed !== null)
       }
+      recordDid(ctx, target.id, args)
       stopped.push(snapshot)
     }
 
@@ -529,12 +586,14 @@ export async function runLog(argv: string[]): Promise<number> {
     const seed = await loadDocSeed(args)
     recordArtifacts(ctx, created.id, args)
     const docPath = await recordDoc(ctx, created.id, seed, 'log', seed !== null)
+    const pageId = await attachToPage(ctx, created.id, args)
+    recordDid(ctx, created.id, args)
 
     const row = findEntryById(ctx.db, created.id)
     const seconds = row ? Math.round((Date.parse(stoppedAt) - Date.parse(startedAt)) / 1000) : 0
 
     if (json) {
-      writeJson(successEnvelope('log', { ...created, durationSeconds: seconds }, { docPath }))
+      writeJson(successEnvelope('log', { ...created, durationSeconds: seconds }, { docPath, pageId }))
     } else {
       writeOut(`Logged #${created.id}: ${title} (${formatDuration(seconds)})`)
       if (docPath) writeOut(`Document: ${docPath}`)

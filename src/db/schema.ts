@@ -125,10 +125,72 @@ const ENTRY_DOCS: readonly string[] = [
   `DROP TABLE notes`,
 ]
 
+const DOC_PAGES: readonly string[] = [
+  `CREATE TABLE doc_pages (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     project_id INTEGER REFERENCES projects (id) ON DELETE RESTRICT,
+     parent_id INTEGER REFERENCES doc_pages (id) ON DELETE RESTRICT,
+     slug TEXT NOT NULL,
+     title TEXT NOT NULL,
+     rel_path TEXT NOT NULL,
+     depth INTEGER NOT NULL DEFAULT 0,
+     position INTEGER NOT NULL DEFAULT 0,
+     status TEXT NOT NULL DEFAULT 'active',
+     source TEXT NOT NULL,
+     section_count INTEGER NOT NULL DEFAULT 0,
+     heading_count INTEGER NOT NULL DEFAULT 0,
+     byte_size INTEGER NOT NULL DEFAULT 0,
+     checksum TEXT NOT NULL DEFAULT '',
+     repo_slug TEXT,
+     branch TEXT,
+     head_sha TEXT,
+     created_at TEXT NOT NULL,
+     recorded_at TEXT NOT NULL,
+     CHECK (status IN ('active', 'archived')),
+     CHECK (title <> ''),
+     CHECK (slug <> '' AND slug NOT LIKE '%/%' AND slug NOT LIKE '%.%'),
+     CHECK (rel_path <> '' AND rel_path NOT LIKE '/%' AND rel_path NOT LIKE '%..%'),
+     CHECK (depth >= 0 AND depth <= 4),
+     CHECK (parent_id IS NULL OR parent_id <> id)
+   )`,
+  `CREATE UNIQUE INDEX doc_pages_sibling
+     ON doc_pages (IFNULL(project_id, 0), IFNULL(parent_id, 0), slug)`,
+  `CREATE UNIQUE INDEX doc_pages_path ON doc_pages (rel_path)`,
+  `CREATE INDEX doc_pages_parent ON doc_pages (parent_id, position)`,
+  `CREATE INDEX doc_pages_project ON doc_pages (project_id, position)`,
+
+  `CREATE TABLE page_entries (
+     page_id INTEGER NOT NULL REFERENCES doc_pages (id) ON DELETE CASCADE,
+     entry_id INTEGER NOT NULL REFERENCES entries (id) ON DELETE CASCADE,
+     summary TEXT NOT NULL DEFAULT '',
+     linked_at TEXT NOT NULL,
+     PRIMARY KEY (page_id, entry_id)
+   )`,
+  `CREATE UNIQUE INDEX page_entries_one_page ON page_entries (entry_id)`,
+
+  `CREATE TABLE page_issues (
+     page_id INTEGER NOT NULL REFERENCES doc_pages (id) ON DELETE CASCADE,
+     issue_key TEXT NOT NULL,
+     role TEXT NOT NULL DEFAULT 'task',
+     summary TEXT NOT NULL DEFAULT '',
+     status TEXT NOT NULL DEFAULT '',
+     status_category TEXT NOT NULL DEFAULT '',
+     url TEXT,
+     created_at TEXT NOT NULL,
+     refreshed_at TEXT,
+     PRIMARY KEY (page_id, issue_key),
+     CHECK (role IN ('epic', 'story', 'task', 'subtask')),
+     CHECK (status_category IN ('', 'new', 'indeterminate', 'done')),
+     CHECK (issue_key GLOB '[A-Z]*-[0-9]*')
+   )`,
+  `CREATE INDEX page_issues_issue ON page_issues (issue_key)`,
+]
+
 export const MIGRATIONS: readonly Migration[] = [
   { version: 1, statements: INITIAL_SCHEMA },
   { version: 2, statements: ENTRY_TOUCHES },
   { version: 3, statements: ENTRY_DOCS },
+  { version: 4, statements: DOC_PAGES },
 ]
 
 export const LATEST_VERSION = MIGRATIONS.reduce(

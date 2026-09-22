@@ -191,19 +191,24 @@ export function checkpointStatus(db: DatabaseSync, entryIds: number[]): Map<numb
   const rows = queryAll<{ entry_id: number; last_note_at: string | null; touched: number }>(
     db.prepare(
       `SELECT e.id AS entry_id,
-              d.recorded_at AS last_note_at,
+              MAX(IFNULL(d.recorded_at, ''), IFNULL(p.recorded_at, '')) AS last_note_at,
               (SELECT COUNT(*) FROM entry_touches t
                 WHERE t.entry_id = e.id
-                  AND (d.recorded_at IS NULL OR t.first_seen_at > d.recorded_at)) AS touched
+                  AND t.first_seen_at > MAX(IFNULL(d.recorded_at, ''), IFNULL(p.recorded_at, ''))) AS touched
        FROM entries e
        LEFT JOIN entry_docs d ON d.entry_id = e.id AND d.kind = 'note'
+       LEFT JOIN page_entries pe ON pe.entry_id = e.id
+       LEFT JOIN doc_pages p ON p.id = pe.page_id
        WHERE e.id IN (${placeholders})`,
     ),
     ...entryIds,
   )
 
   for (const row of rows) {
-    byEntry.set(row.entry_id, { lastNoteAt: row.last_note_at, touchedSinceNote: row.touched })
+    byEntry.set(row.entry_id, {
+      lastNoteAt: row.last_note_at === '' ? null : row.last_note_at,
+      touchedSinceNote: row.touched,
+    })
   }
   return byEntry
 }

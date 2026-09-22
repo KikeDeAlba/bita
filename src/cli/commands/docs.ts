@@ -36,10 +36,13 @@ import {
 import { createLocalContext, type LocalContext } from '../local-context.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
 import { resolveProjectArg } from '../project-arg.ts'
+import { pageTree, runDocsPage } from './docs-page.ts'
+import { readConfig } from '../../state/config.ts'
 
 const OPTIONS = {
   project: { type: 'string' as const },
   months: { type: 'boolean' as const, default: false },
+  pages: { type: 'boolean' as const, default: false },
   all: { type: 'boolean' as const, default: false },
   'with-doc': { type: 'boolean' as const, default: false },
   limit: { type: 'string' as const },
@@ -56,7 +59,7 @@ const OPTIONS = {
   'max-scan-bytes': { type: 'string' as const },
 }
 
-const SUBCOMMANDS = new Set(['tree', 'ls', 'show', 'search'])
+const SUBCOMMANDS = new Set(['tree', 'ls', 'show', 'search', 'page'])
 
 const DEFAULT_LIST_LIMIT = 50
 const DEFAULT_SEARCH_LIMIT = 30
@@ -67,12 +70,14 @@ export async function runDocs(argv: string[]): Promise<number> {
     throw new UsageError(`Usage: bita docs <${[...SUBCOMMANDS].join('|')}>`)
   }
 
+  if (first === 'page') return await runDocsPage(argv.slice(1))
+
   const args = parseCommandArgs(argv.slice(1), OPTIONS, { ...BASE_OPTIONS, ...RANGE_OPTIONS })
   const json = readBoolean(args, 'json')
   const ctx = createLocalContext(args)
 
   try {
-    if (first === 'tree') return runTree(ctx, args, json)
+    if (first === 'tree') return await runTree(ctx, args, json)
     if (first === 'ls') return await runList(ctx, args, json)
     if (first === 'show') return await runShow(ctx, args, json)
     return await runSearch(ctx, args, json)
@@ -214,7 +219,7 @@ function warningsFor(counts: FileTally): string[] {
   return warnings
 }
 
-function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): number {
+async function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): Promise<number> {
   const wantsMonths = readBoolean(args, 'months')
   const includesEmpty = readBoolean(args, 'all')
   const counts = docCountsByProject(ctx.db)
@@ -255,12 +260,16 @@ function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): number {
     }
   }
 
+  const wantsPages = readBoolean(args, 'pages')
+  const spaces = wantsPages ? await spacesWithPages(ctx, projects) : null
+
   const totals = docCorpusTotals(ctx.db)
   const meta = {
     root: ctx.docsRoot,
     timezone: ctx.timezone,
     sections: [...LEGACY_ENTRY_DOC_SECTIONS],
     includesEmpty,
+    layout: wantsPages ? 'hierarchical' : 'legacy',
     totals: {
       projectCount: projects.length,
       entryCount: totals.entryCount,
@@ -273,7 +282,7 @@ function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): number {
   }
 
   if (json) {
-    writeJson(successEnvelope('docs tree', { projects }, meta))
+    writeJson(successEnvelope('docs tree', spaces === null ? { projects } : { projects, spaces }, meta))
     return 0
   }
 
@@ -282,6 +291,42 @@ function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): number {
     writeOut(`${String(project.docCount).padStart(4)} / ${String(project.entryCount).padEnd(4)} ${project.projectName ?? 'sin proyecto'}`)
   }
   return 0
+}
+
+interface SpaceProject {
+  projectId: number | null
+  projectName: string | null
+  projectSlug: string
+  active: boolean
+  entryCount: number
+}
+
+async function spacesWithPages(ctx: LocalContext, projects: readonly SpaceProject[]): Promise<unknown[]> {
+  const pageCtx = { ...ctx, siteUrl: (await readConfig()).jira?.siteUrl }
+  const roots = pageTree(pageCtx)
+
+  const byProject = new Map<number | null, ReturnType<typeof pageTree>>()
+  for (const page of roots) {
+    const list = byProject.get(page.projectId) ?? []
+    list.push(page)
+    byProject.set(page.projectId, list)
+  }
+
+  const countPages = (list: ReturnType<typeof pageTree>): number =>
+    list.reduce((total, page) => total + 1 + countPages(page.children ?? []), 0)
+
+  return projects.map((project) => {
+    const pages = byProject.get(project.projectId) ?? []
+    return {
+      projectId: project.projectId,
+      projectName: project.projectName,
+      projectSlug: project.projectSlug,
+      active: project.active,
+      entryCount: project.entryCount,
+      pageCount: countPages(pages),
+      pages,
+    }
+  })
 }
 
 interface MonthCount {
