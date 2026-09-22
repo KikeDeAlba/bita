@@ -54,6 +54,18 @@ en `/Applications`.
 Node 24 o más nuevo: el CLI son archivos `.ts` que node ejecuta directo, y usa
 `node:sqlite`.
 
+### Cómo se publica
+
+Nadie publica a mano. Al publicar una release en GitHub, el workflow
+`.github/workflows/publish.yml` corre el typecheck y las pruebas, comprueba que
+el tag y la versión de `package.json` coinciden —si no, falla antes de subir
+nada— y hace `npm publish --provenance`.
+
+La procedencia ata el paquete de npm al commit y al workflow que lo construyó,
+así que cualquiera puede comprobar de dónde salió. Hace falta el secreto
+`NPM_TOKEN` en el repositorio, un token de automatización con permiso de
+escritura sobre `@kikedealba`.
+
 ### Desde el repositorio
 
 Para trabajar sobre el código. El instalador enlaza contra tu clon, así que un
