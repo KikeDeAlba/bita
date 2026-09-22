@@ -293,7 +293,30 @@ async function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): Prom
   return 0
 }
 
-interface SpaceProject {
+export function withPagedProjects(
+  projects: readonly SpaceProject[],
+  pagedProjectIds: readonly (number | null)[],
+  lookup: (projectId: number) => { name: string; active: boolean } | undefined,
+): SpaceProject[] {
+  const spaces = [...projects]
+  const known = new Set(projects.map((project) => project.projectId))
+
+  for (const projectId of pagedProjectIds) {
+    if (known.has(projectId)) continue
+    known.add(projectId)
+    const project = projectId === null ? undefined : lookup(projectId)
+    spaces.push({
+      projectId,
+      projectName: project?.name ?? null,
+      projectSlug: projectSlug(project?.name ?? null),
+      active: project?.active ?? true,
+      entryCount: 0,
+    })
+  }
+  return spaces
+}
+
+export interface SpaceProject {
   projectId: number | null
   projectName: string | null
   projectSlug: string
@@ -315,7 +338,12 @@ async function spacesWithPages(ctx: LocalContext, projects: readonly SpaceProjec
   const countPages = (list: ReturnType<typeof pageTree>): number =>
     list.reduce((total, page) => total + 1 + countPages(page.children ?? []), 0)
 
-  return projects.map((project) => {
+  const catalogue = listProjects(ctx.db, false)
+  const spaces = withPagedProjects(projects, [...byProject.keys()], (id) =>
+    catalogue.find((row) => row.id === id),
+  )
+
+  return spaces.map((project) => {
     const pages = byProject.get(project.projectId) ?? []
     return {
       projectId: project.projectId,
