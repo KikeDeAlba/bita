@@ -36,6 +36,8 @@ import {
 import { createLocalContext, type LocalContext } from '../local-context.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
 import { resolveProjectArg } from '../project-arg.ts'
+import { copyFile } from 'node:fs/promises'
+import { migratePages, undoMigration } from '../../docs/migrate-pages.ts'
 import { pageTree, runDocsPage } from './docs-page.ts'
 import { readConfig } from '../../state/config.ts'
 
@@ -43,6 +45,9 @@ const OPTIONS = {
   project: { type: 'string' as const },
   months: { type: 'boolean' as const, default: false },
   pages: { type: 'boolean' as const, default: false },
+  'dry-run': { type: 'boolean' as const, default: false },
+  yes: { type: 'boolean' as const, default: false },
+  undo: { type: 'boolean' as const, default: false },
   all: { type: 'boolean' as const, default: false },
   'with-doc': { type: 'boolean' as const, default: false },
   limit: { type: 'string' as const },
@@ -59,7 +64,7 @@ const OPTIONS = {
   'max-scan-bytes': { type: 'string' as const },
 }
 
-const SUBCOMMANDS = new Set(['tree', 'ls', 'show', 'search', 'page'])
+const SUBCOMMANDS = new Set(['tree', 'ls', 'show', 'search', 'page', 'migrate'])
 
 const DEFAULT_LIST_LIMIT = 50
 const DEFAULT_SEARCH_LIMIT = 30
@@ -71,6 +76,7 @@ export async function runDocs(argv: string[]): Promise<number> {
   }
 
   if (first === 'page') return await runDocsPage(argv.slice(1))
+  if (first === 'migrate') return await runMigrate(argv.slice(1))
 
   const args = parseCommandArgs(argv.slice(1), OPTIONS, { ...BASE_OPTIONS, ...RANGE_OPTIONS })
   const json = readBoolean(args, 'json')
@@ -291,6 +297,62 @@ async function runTree(ctx: LocalContext, args: ParsedArgs, json: boolean): Prom
     writeOut(`${String(project.docCount).padStart(4)} / ${String(project.entryCount).padEnd(4)} ${project.projectName ?? 'sin proyecto'}`)
   }
   return 0
+}
+
+async function runMigrate(argv: string[]): Promise<number> {
+  const args = parseCommandArgs(argv, OPTIONS, BASE_OPTIONS)
+  const json = readBoolean(args, 'json')
+  const ctx = createLocalContext(args)
+
+  try {
+    if (readBoolean(args, 'undo')) {
+      const report = await undoMigration(ctx)
+      if (json) {
+        writeJson(successEnvelope('docs migrate', report, { root: ctx.docsRoot }))
+        return 0
+      }
+      if (report.batch === null) {
+        writeOut('There is no migration to undo.')
+        return 0
+      }
+      writeOut(`Removed ${report.pagesRemoved} page(s) and ${report.filesRemoved} file(s).`)
+      for (const kept of report.filesKept) writeOut(`Kept (edited since): ${kept}`)
+      return 0
+    }
+
+    const apply = readBoolean(args, 'yes') && !readBoolean(args, 'dry-run')
+    if (apply) await backupDatabase(ctx)
+
+    const projectRaw = readString(args, 'project')
+    const report = await migratePages(ctx, {
+      dryRun: !apply,
+      ...(projectRaw !== undefined ? { projectId: resolveProjectArg(ctx.db, projectRaw).id } : {}),
+      ...(readInteger(args, 'limit') !== undefined ? { limit: readInteger(args, 'limit') as number } : {}),
+      siteUrl: (await readConfig()).jira?.siteUrl,
+    })
+
+    if (json) {
+      writeJson(successEnvelope('docs migrate', report, { root: ctx.docsRoot, applied: apply }))
+      return 0
+    }
+
+    writeOut(
+      apply
+        ? `Made ${report.migrated.length} page(s) out of ${report.scanned} document(s).`
+        : `Would make ${report.migrated.length} page(s) out of ${report.scanned} document(s). Pass --yes to do it.`,
+    )
+    for (const page of report.migrated) writeOut(`  ${page.title}  ->  ${page.relPath}`)
+    for (const skip of report.skipped) writeOut(`  #${skip.entryId} skipped: ${skip.reason}`)
+    return 0
+  } finally {
+    ctx.db.close()
+  }
+}
+
+async function backupDatabase(ctx: LocalContext): Promise<void> {
+  if (ctx.databasePath === ':memory:') return
+  const stamp = ctx.now.toISOString().replace(/[:.]/g, '-')
+  await copyFile(ctx.databasePath, `${ctx.databasePath}.bak-${stamp}`)
 }
 
 export function withPagedProjects(

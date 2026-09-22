@@ -52,6 +52,8 @@ Documents:
   docs page link <id>        Tie entries or Jira issues to the page
   docs page unlink <id>      Untie them
   docs page rm <id>          Forget the page; the .md stays on disk
+  docs migrate [--yes]       Turn every entry document into a page
+  docs migrate --undo        Put the corpus back as it was
 
 Reporting:
   entries [preset]           List time entries

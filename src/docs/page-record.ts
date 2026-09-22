@@ -19,6 +19,7 @@ import { readRaw, renameDocument, withDocLock, writeDocument } from './store.ts'
 export interface PageWrite {
   section?: { heading: string; body: string } | undefined
   body?: string | undefined
+  frontMatter?: Record<string, string> | undefined
 }
 
 export interface RecordedPage {
@@ -57,14 +58,15 @@ export async function recordPageDoc(
     let doc: ParsedDocument = raw === null ? emptyDocument(new Map(), page.title) : parseDocument(raw)
 
     if (write.body !== undefined) {
-      doc = { ...doc, preamble: write.body.trim(), sections: [] }
+      const replacement = parseDocument(write.body)
+      doc = { ...doc, preamble: replacement.preamble, sections: replacement.sections }
     }
     if (write.section) {
       doc = upsertSection(doc, write.section.heading, write.section.body).doc
     }
     if (doc.title !== page.title) doc = { ...doc, title: page.title }
     if (doc.frontMatterValid || raw === null) {
-      doc = stampFrontMatter(doc, ownedFrontMatter(ctx, page, parentTitle))
+      doc = stampFrontMatter(doc, { ...ownedFrontMatter(ctx, page, parentTitle), ...(write.frontMatter ?? {}) })
     }
 
     const result = await writeDocument(absolutePath, doc)
