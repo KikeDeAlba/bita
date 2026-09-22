@@ -27,10 +27,10 @@
     "node": ">=24"
   },
   "bin": {
-    "bita": "./src/bin/bita.ts"
+    "bita": "./dist/bin/bita.js"
   },
   "files": [
-    "src",
+    "dist",
     "skill",
     "commands",
     "scripts",
@@ -41,6 +41,8 @@
     "access": "public"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm build",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"test/**/*.test.ts\"",
     "bita": "node src/bin/bita.ts"
