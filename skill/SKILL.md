@@ -379,8 +379,10 @@ estimación. Avísalo una vez por proyecto, no una por issue.
 ### 7. Propuesta y confirmación
 
 Tabla con una fila por tarea: proyecto → Jira, tipo, resumen, número de
-worklogs, rango de fechas y total. Debajo, lo excluido con su motivo. Pregunta
-además, una sola vez, **si hay que cerrar las tareas al terminar**.
+worklogs, rango de fechas y total. Debajo, lo excluido con su motivo.
+
+**Las tareas se cierran al terminar. No lo preguntes.** Solo se dejan abiertas si
+el usuario lo pide explícitamente, y entonces dilo en la tabla.
 
 Menú de cuatro opciones:
 
@@ -389,20 +391,16 @@ Menú de cuatro opciones:
 3. Ver el detalle de un grupo: el payload literal que se enviaría.
 4. Cancelar.
 
+**Esta es la única parada.** Confirmado el menú, se escriben todos los grupos sin
+volver a preguntar.
+
 Si la frase del usuario fue de consulta ("qué trabajé esta semana"), **termina
 aquí**: eso es el reporte, no hay escritura.
 
-### 8. Grupo canario
+### 8. Escribir, grupo por grupo
 
-**La primera vez que una corrida toque Jira, procesa un solo grupo completo**,
-enseña el enlace y **para a confirmar otra vez** antes de seguir. Acota el daño de
-un error sistémico (time tracking deshabilitado, transición equivocada, permisos)
-a un issue en vez de a veinte. Sáltalo solo si el usuario lo pide explícitamente,
-y nunca en la primera corrida histórica.
-
-### 9. Escribir, grupo por grupo
-
-En este orden, sin paralelismo:
+Todos los grupos, uno detrás de otro, sin parar a confirmar entre medias. Y dentro
+de cada grupo, este orden, sin paralelismo:
 
 0. **La Historia ya está resuelta** en el paso 5.5 y persistida en el mapeo.
    Si tuviste que crearla, no le pongas estimación ni la cierres nunca.
@@ -414,10 +412,12 @@ En este orden, sin paralelismo:
    - `description`: se **construye** desde `docs[]`, no se copia. Quita el front
      matter y quita el H1 —el H1 es el summary y repetirlo es ruido— y deja las
      secciones en su orden, omitiendo las vacías. En «Tocado», los archivos
-     salen de `touchedFiles` del grupo, no del documento. Cierra **siempre** con
-     la tabla de bloques y los ids de las entradas. Si un documento viene con
+     salen de `touchedFiles` del grupo, no del documento. **No añadas una tabla de
+     bloques ni los ids de las entradas**: el tiempo ya está en los worklogs y el
+     rastro en su `commentBody`, y repetirlo en la descripción la convierte en un
+     recibo en vez de en documentación. Si un documento viene con
      `markdown: null` y `truncated: true`, léelo de su `path` con Read. Un grupo
-     sin documento pero con archivos tocados da solo «Tocado» y la tabla.
+     sin documento pero con archivos tocados da solo «Tocado».
      **Antes de enviarla, pásale la prueba de olfato**: es el texto que verán
      otros.
 
@@ -448,8 +448,9 @@ En este orden, sin paralelismo:
 3. `addWorklogToJiraIssue` **una vez por cada entrada de `worklogs[]`**, copiando
    `startedJira` y `timeSpent`. En `commentBody`, el rastro de auditoría:
    `bita · <startLocal> · bita:<entryId>`.
-4. Si toca cerrar: `getTransitionsForJiraIssue` y elige **por lo que devuelva**,
-   nunca por nombre a ciegas. Ver abajo.
+4. Cierra el issue: `getTransitionsForJiraIssue` y elige **por lo que devuelva**,
+   nunca por nombre a ciegas. Ver abajo. Sáltalo solo si el usuario pidió dejarlas
+   abiertas.
 5. `bita link <entryIds...> --issue <ISSUE-KEY>`, en una sola llamada por grupo.
    Es una transacción local: o quedan atadas todas o ninguna.
 
