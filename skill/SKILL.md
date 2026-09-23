@@ -99,7 +99,8 @@ nada, así que consulta las veces que haga falta.
 7. **Una sola Historia nueva por corrida sin preguntar.** Si el plan crea dos o
    más, para y enséñalas: casi siempre significa que la épica o el tema están
    mal. Jira no fusiona issues, así que una Historia duplicada se limpia moviendo
-   subtareas a mano.
+   subtareas a mano. Lo mismo vale para una **épica nueva**, que solo se propone
+   en proyectos que apuntan al tablero (`epicMode: "per-run"`).
 8. **Si `createJiraIssue` falla por jerarquía, para ese grupo.** No reintentes
    sin `parent`: una subtarea huérfana es inenrutable.
 9. **No calcules fechas ni duraciones.** El CLI ya entrega `startedJira`,
@@ -211,6 +212,20 @@ El tiempo se acumula solo hacia arriba: Subtarea → Historia → Épica.
 | `epic-story-subtask` | Por defecto | Historia bajo la épica; Subtareas bajo la Historia |
 | `story-subtask` | El proyecto no tiene épica | Historia suelta; Subtareas bajo ella |
 | `flat-task` | Solo si el usuario lo pide | Tarea suelta, como en la primera pasada |
+
+### A qué apunta el mapeo
+
+El mapeo de un proyecto apunta **a una épica** o **al tablero**, y el CLI lo
+entrega en cada grupo como `epicMode`:
+
+| `epicMode` | Mapeo | Qué pasa en cada corrida |
+|---|---|---|
+| `fixed` | Tiene `parentKey` | Todo va a esa épica. `jiraEpicKey` viene lleno. Así se ha trabajado siempre y no cambia. |
+| `per-run` | Solo el tablero | La épica se **elige en cada corrida** entre las abiertas del tablero, o la Historia queda suelta. `jiraEpicKey` viene `null`. |
+| `flat` | `hierarchy: flat-task` | Tarea suelta, sin épica ni Historia. |
+
+Apuntar a una épica tiene sentido cuando el proyecto siempre cae en la misma. Si
+el trabajo se reparte entre varias épicas del tablero, se apunta al tablero.
 
 Verificado en vivo: `VD-4961` es una Historia y obligó a crear Subtareas; las
 épicas `INN-1213` e `INN-1216` aceptaron Tareas como hijas.
@@ -330,12 +345,26 @@ Subtareas**.
 
 - Si te da una épica → `bita map set <id> <KEY> --parent <KEY-123>`, y el
   trabajo será `Subtarea` bajo una Historia dentro de esa épica.
-- Si dice que **no hay épica** → guárdalo igual con `--no-epic`, que marca
-  `epicResolved: true`. A partir de ahí la Historia se crea suelta y las
-  subtareas cuelgan de ella. **No vuelvas a preguntar por ese proyecto.**
+- Si dice que **no hay una sola épica** → guárdalo con `--no-epic`, que marca
+  `epicResolved: true` y deja el mapeo apuntando al tablero (`epicMode:
+  "per-run"`). A partir de ahí la épica se elige en cada corrida (paso 5.5) y,
+  si ninguna encaja, la Historia se crea suelta. **No vuelvas a preguntar por
+  ese proyecto.**
 
 Sin ese `epicResolved`, los proyectos sin épica se preguntarían en cada corrida
 para siempre, que es justo lo que este flujo no debe hacer.
+
+**Cambiar a qué apunta un proyecto** no pierde nada: `map set` fusiona con el
+mapeo que ya existe y conserva la transición de cierre, los tipos y la caché de
+Historias, que está indexada por épica.
+
+```
+bita map set <id> <KEY> --parent <KEY-123>   # de tablero a épica fija
+bita map set <id> <KEY> --no-epic            # de épica fija a tablero
+```
+
+Hazlo solo cuando el usuario lo pida, o cuando corrija el destino de un proyecto
+con épica fija diciendo que su trabajo no siempre va ahí.
 
 Los proyectos ya mapeados se resuelven en silencio: **no vuelvas a preguntar por
 ellos nunca**. Si el usuario cancela a mitad del bloque, aborta la corrida entera.
@@ -347,10 +376,34 @@ ofrece asignarles uno solo para esta corrida, o dejarlas pendientes.
 
 Antes de crear nada:
 
+0. **Solo si `epicMode` es `"per-run"`: elige la épica.** Con `fixed` la épica
+   es `jiraEpicKey` y este subpaso no existe; con `flat` no hay épica ni
+   Historia.
+
+   - Trae las épicas abiertas del tablero, una vez por tablero y corrida:
+
+     ```
+     project = <KEY> AND issuetype = Epic AND statusCategory != Done ORDER BY updated DESC
+     ```
+
+   - Elige por grupo con las mismas señales que el tema: página, título, repo y
+     rama. La épica es el frente de trabajo (un cliente, una iniciativa, una
+     auditoría), no el tipo de trabajo, que eso es la Historia.
+   - Si ninguna encaja, el grupo va a una **Historia suelta**, con la regla de
+     búsqueda sin épica del punto 3. Si lo que falta es claramente un frente
+     nuevo, propón crear la épica en la propuesta, con su nombre. Cuenta para la
+     regla 7 y se crea sin `assignee`, sin estimación y sin cerrarla nunca.
+   - Enseña la épica elegida en la tabla de la propuesta. Es la decisión que el
+     usuario más probablemente corrija.
+   - A partir de aquí, «la épica» es la que elegiste, y la caché de Historias es
+     `jiraStoriesByEpic[<épica>]`, o `jiraStoriesByEpic[""]` si la Historia va
+     suelta.
+
 1. Elige el tema de la lista cerrada. La señal más fuerte es el **documento**
    del grupo (`pages[]`, o `docs[]` en el trabajo anterior a las páginas).
    Después el título, el repo y la rama. El proyecto acota, no decide.
-2. ¿`jiraStories[themeId]` ya tiene una key? → úsala, sin buscar.
+2. ¿`jiraStories[themeId]` ya tiene una key? → úsala, sin buscar. Con
+   `per-run`, mira en `jiraStoriesByEpic` bajo la épica elegida.
 3. Si no, trae las Historias de la épica y **empata por igualdad exacta
    normalizada** (trim, espacios, acentos, minúsculas) contra el nombre canónico:
 
@@ -361,13 +414,15 @@ Antes de crear nada:
    **Nunca decidas con `summary ~`.** Tokeniza: «Infraestructura» empata
    «Infraestructura de pruebas del cliente». Sirve para avisar, no para elegir.
 
-   Sin épica (`hierarchy: story-subtask`), añade `AND parent IS EMPTY AND
-   reporter = currentUser()`: sin épica que acote, el riesgo de reusar la
-   Historia de otro es real.
+   Sin épica (`hierarchy: story-subtask` con épica fija ausente, o `per-run` sin
+   épica que encaje), añade `AND parent IS EMPTY AND reporter = currentUser()`:
+   sin épica que acote, el riesgo de reusar la Historia de otro es real.
 4. Si no hay empate, propón crearla. Al confirmar, créala **sin `assignee`** —es
    un contenedor, no trabajo de nadie— y **persiste la referencia en el mapeo de
    inmediato**, antes de tocar ninguna subtarea:
-   `bita map story <projectId> <themeId> <ISSUE-KEY>`.
+   `bita map story <projectId> <themeId> <ISSUE-KEY>`. Con `per-run` di bajo qué
+   épica cuelga —`--epic <KEY-123>` o `--no-epic`—: el CLI lo exige, porque la
+   misma Historia de tema existe una vez por épica.
 
 Si un grupo mezcla notas de temas distintos, gana el mayoritario y **dilo en la
 propuesta**: suele ser un cronómetro que se dejó correr a través de un cambio de
@@ -388,7 +443,9 @@ estimación. Avísalo una vez por proyecto, no una por issue.
 ### 7. Propuesta y confirmación
 
 Tabla con una fila por tarea: proyecto → Jira, tipo, resumen, número de
-worklogs, rango de fechas y total. Debajo, lo excluido con su motivo.
+worklogs, rango de fechas y total. Si algún grupo es `per-run`, añade la columna
+de épica e Historia elegidas, marcando lo que se va a crear. Debajo, lo excluido
+con su motivo.
 
 **Las tareas se cierran al terminar. No lo preguntes.** Solo se dejan abiertas si
 el usuario lo pide explícitamente, y entonces dilo en la tabla.
@@ -417,7 +474,9 @@ Todos los grupos, uno detrás de otro, sin parar a confirmar entre medias. Y den
 de cada grupo, este orden, sin paralelismo:
 
 0. **La Historia ya está resuelta** en el paso 5.5 y persistida en el mapeo.
-   Si tuviste que crearla, no le pongas estimación ni la cierres nunca.
+   Si tuviste que crearla, no le pongas estimación ni la cierres nunca. Si el
+   grupo es `per-run` y llevaba épica nueva, esa épica se crea primero, y la
+   Historia con `parent` = esa épica.
 1. `createJiraIssue` para el trabajo, como **`jiraWorkIssueTypeName`**
    (`"Subtarea"` por defecto) con `parent` = la key de la Historia.
    `issueTypeName` va por **nombre**, no por id.
