@@ -2,12 +2,39 @@ import { UsageError } from '../../errors.ts'
 import { parseCommandArgs, readBoolean, readString } from '../args.ts'
 import { createLocalContext } from '../local-context.ts'
 import { findProjectById } from '../../db/projects.ts'
-import { readConfig, setProjectMapping, setStory, unsetProjectMapping } from '../../state/config.ts'
+import {
+  epicMode,
+  NO_EPIC,
+  readConfig,
+  setProjectMapping,
+  setStory,
+  unsetProjectMapping,
+  type ProjectMapping,
+} from '../../state/config.ts'
 import { renderTable } from '../table.ts'
 import { successEnvelope, writeJson, writeOut } from '../output.ts'
 
 const JIRA_KEY_PATTERN = /^[A-Z][A-Z0-9]+$/
 const PARENT_KEY_PATTERN = /^[A-Z][A-Z0-9]+-\d+$/
+
+function readIssueKeyOnBoard(raw: string, jiraProjectKey: string, label: string): string {
+  const issueKey = raw.toUpperCase()
+  if (!PARENT_KEY_PATTERN.test(issueKey)) {
+    throw new UsageError(`Invalid ${label} key: "${raw}". Expected something like ${jiraProjectKey}-1213.`)
+  }
+  const issueProject = issueKey.slice(0, issueKey.lastIndexOf('-'))
+  if (issueProject !== jiraProjectKey) {
+    throw new UsageError(
+      `${label[0]?.toUpperCase()}${label.slice(1)} ${issueKey} belongs to project ${issueProject}, not ${jiraProjectKey}. An issue cannot sit under a parent from another project.`,
+    )
+  }
+  return issueKey
+}
+
+function parentColumn(mapping: ProjectMapping): string {
+  if (mapping.parentKey) return mapping.parentKey
+  return epicMode(mapping) === 'per-run' ? '(board)' : ''
+}
 
 export async function runMap(argv: string[]): Promise<number> {
   const subcommand = argv[0] ?? 'list'
@@ -25,6 +52,7 @@ export async function runMap(argv: string[]): Promise<number> {
     const rows = Object.entries(config.projectMapping).map(([id, mapping]) => ({
       projectId: Number(id),
       ...mapping,
+      epicMode: epicMode(mapping),
     }))
 
     if (readBoolean(args, 'json')) {
@@ -51,7 +79,7 @@ export async function runMap(argv: string[]): Promise<number> {
           String(row.projectId),
           row.projectName,
           row.jiraProjectKey,
-          row.parentKey ?? '',
+          parentColumn(row),
           row.issueTypeName ?? '',
           row.doneTransition?.name ?? '',
         ]),
@@ -87,21 +115,13 @@ export async function runMap(argv: string[]): Promise<number> {
 
     const issueTypeName = readString(args, 'issue-type')
     const rawParent = readString(args, 'parent') ?? readString(args, 'epic')
-    const parentKey = rawParent === undefined ? undefined : rawParent.toUpperCase()
-
-    if (parentKey !== undefined) {
-      if (!PARENT_KEY_PATTERN.test(parentKey)) {
-        throw new UsageError(`Invalid parent key: "${rawParent}". Expected something like INN-1213.`)
-      }
-      const parentProject = parentKey.slice(0, parentKey.lastIndexOf('-'))
-      if (parentProject !== jiraProjectKey) {
-        throw new UsageError(
-          `Parent ${parentKey} belongs to project ${parentProject}, not ${jiraProjectKey}. An issue cannot sit under a parent from another project.`,
-        )
-      }
-    }
+    const parentKey =
+      rawParent === undefined ? undefined : readIssueKeyOnBoard(rawParent, jiraProjectKey, 'parent')
 
     const noEpic = readBoolean(args, 'no-epic')
+    if (noEpic && parentKey !== undefined) {
+      throw new UsageError('Use either --parent or --no-epic, not both.')
+    }
     const rawHierarchy = readString(args, 'hierarchy')
     if (
       rawHierarchy !== undefined &&
@@ -119,7 +139,7 @@ export async function runMap(argv: string[]): Promise<number> {
     await setProjectMapping(projectId, {
       projectName: project.name,
       jiraProjectKey,
-      ...(parentKey !== undefined ? { parentKey } : {}),
+      ...(parentKey !== undefined ? { parentKey } : noEpic ? { parentKey: null } : {}),
       ...(hierarchy !== undefined ? { hierarchy } : {}),
       ...(parentKey !== undefined || noEpic ? { epicResolved: true } : {}),
       ...(issueTypeName !== undefined ? { issueTypeName } : {}),
@@ -136,7 +156,7 @@ export async function runMap(argv: string[]): Promise<number> {
         }),
       )
     } else {
-      const under = parentKey ? ` under ${parentKey}` : ''
+      const under = parentKey ? ` under ${parentKey}` : noEpic ? ', choosing the epic on every run' : ''
       writeOut(`Mapped "${project.name}" (${projectId}) to Jira project ${jiraProjectKey}${under}.`)
     }
     return 0
@@ -163,7 +183,9 @@ export async function runMap(argv: string[]): Promise<number> {
   if (subcommand === 'story') {
     const [rawProjectId, themeId, rawIssueKey] = args.positionals
     if (!rawProjectId || !themeId || !rawIssueKey) {
-      throw new UsageError('Usage: bita map story <projectId> <themeId> <ISSUE-KEY>')
+      throw new UsageError(
+        'Usage: bita map story <projectId> <themeId> <ISSUE-KEY> [--epic <KEY-123> | --no-epic]',
+      )
     }
 
     const projectId = Number(rawProjectId)
@@ -171,21 +193,51 @@ export async function runMap(argv: string[]): Promise<number> {
       throw new UsageError(`Invalid Toggl project id: "${rawProjectId}".`)
     }
 
-    const issueKey = rawIssueKey.toUpperCase()
-    if (!PARENT_KEY_PATTERN.test(issueKey)) {
-      throw new UsageError(`Invalid issue key: "${rawIssueKey}". Expected something like INN-1230.`)
+    const mapping = (await readConfig()).projectMapping[String(projectId)]
+    if (!mapping) {
+      throw new UsageError(
+        `Project ${projectId} is not mapped to a Jira project. Run "bita map set ${projectId} <JIRAKEY>" first.`,
+      )
     }
 
-    await setStory(projectId, themeId, {
-      key: issueKey,
-      summary: readString(args, 'summary') ?? themeId,
-      verifiedAt: new Date().toISOString(),
-    })
+    const issueKey = readIssueKeyOnBoard(rawIssueKey, mapping.jiraProjectKey, 'story')
+    const rawEpic = readString(args, 'epic')
+    const noEpic = readBoolean(args, 'no-epic')
+    if (rawEpic !== undefined && noEpic) {
+      throw new UsageError('Use either --epic or --no-epic, not both.')
+    }
+
+    let epicKey: string
+    if (rawEpic !== undefined) {
+      epicKey = readIssueKeyOnBoard(rawEpic, mapping.jiraProjectKey, 'epic')
+    } else if (noEpic) {
+      epicKey = NO_EPIC
+    } else if (epicMode(mapping) === 'per-run') {
+      throw new UsageError(
+        `Project ${projectId} picks its epic on every run. Say which one the story sits under: bita map story ${projectId} ${themeId} ${issueKey} --epic <${mapping.jiraProjectKey}-123> (or --no-epic for a story without one).`,
+      )
+    } else {
+      epicKey = mapping.parentKey ?? NO_EPIC
+    }
+
+    await setStory(
+      projectId,
+      themeId,
+      {
+        key: issueKey,
+        summary: readString(args, 'summary') ?? themeId,
+        verifiedAt: new Date().toISOString(),
+      },
+      epicKey,
+    )
 
     if (readBoolean(args, 'json')) {
-      writeJson(successEnvelope('map story', { projectId, themeId, issueKey }))
+      writeJson(
+        successEnvelope('map story', { projectId, themeId, issueKey, epicKey: epicKey || null }),
+      )
     } else {
-      writeOut(`Theme "${themeId}" of project ${projectId} now points at ${issueKey}.`)
+      const under = epicKey ? ` under ${epicKey}` : ' without an epic'
+      writeOut(`Theme "${themeId}" of project ${projectId} now points at ${issueKey}${under}.`)
     }
     return 0
   }

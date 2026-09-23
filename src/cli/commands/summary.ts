@@ -11,7 +11,7 @@ import { countDocs, docsByEntry } from '../../db/docs.ts'
 import { pagesForEntries, type SummaryPage } from '../../docs/page-read.ts'
 import { loadSummaryDocs, parseNotesMode } from '../../docs/read.ts'
 import { touchesByEntry } from '../../db/touches.ts'
-import { readConfig, storyThemes } from '../../state/config.ts'
+import { jiraTarget, readConfig, storyThemes } from '../../state/config.ts'
 
 export async function runSummary(argv: string[]): Promise<number> {
   const args = parseCommandArgs(argv, {
@@ -75,16 +75,9 @@ export async function runSummary(argv: string[]): Promise<number> {
     const withMapping = groups.map((group) => {
       const mapping =
         group.projectId === null ? undefined : config.projectMapping[String(group.projectId)]
-      const hierarchy =
-        mapping?.hierarchy ?? (mapping?.parentKey ? 'epic-story-subtask' : 'story-subtask')
       return {
         ...group,
-        jiraProjectKey: mapping?.jiraProjectKey ?? null,
-        hierarchy,
-        jiraEpicKey: mapping?.parentKey ?? null,
-        jiraParentKey: mapping?.parentKey ?? null,
-        epicResolved: mapping?.epicResolved ?? false,
-        jiraStories: mapping?.stories ?? {},
+        ...jiraTarget(mapping),
         jiraStoryIssueTypeName: mapping?.storyIssueTypeName ?? 'Historia',
         jiraWorkIssueTypeName: mapping?.workIssueTypeName ?? 'Subtarea',
         jiraIssueTypeName: mapping?.issueTypeName ?? config.defaults?.issueTypeName ?? null,
@@ -181,7 +174,7 @@ export async function runSummary(argv: string[]): Promise<number> {
         withMapping.map((group) => [
           group.projectName ?? '(no project)',
           group.jiraProjectKey ?? '?',
-          group.jiraParentKey ?? '',
+          group.jiraParentKey ?? (group.epicMode === 'per-run' ? '(board)' : ''),
           group.summary,
           group.days.length === 1
             ? (group.days[0] ?? '')

@@ -4,11 +4,18 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import {
+  epicMode,
+  jiraTarget,
+  mergeProjectMapping,
+  migrateLegacyKeys,
+  NO_EPIC,
   readConfig,
   setProjectMapping,
   setScopeMapping,
+  setStory,
   unsetProjectMapping,
   unsetScopeMapping,
+  type ProjectMapping,
 } from '../src/state/config.ts'
 
 async function tempConfigPath(): Promise<string> {
@@ -136,4 +143,157 @@ test('unsetting one repository leaves the others alone', async () => {
 
   assert.equal(config.scopeMapping['a/one'], undefined)
   assert.equal(config.scopeMapping['a/two']?.projectId, 2)
+})
+
+test('legacy stories move under the epic they were created in', () => {
+  const migrated = migrateLegacyKeys({
+    projectMapping: {
+      '1': {
+        projectName: 'Apartados',
+        jiraProjectKey: 'VBAA',
+        parentKey: 'VBAA-639',
+        stories: { infra: { key: 'VBAA-680', summary: 'infra', verifiedAt: 'x' } },
+      } as ProjectMapping,
+      '2': {
+        projectName: 'Global',
+        jiraProjectKey: 'VBGLOBAL',
+        stories: { soporte: { key: 'VBGLOBAL-9', summary: 'soporte', verifiedAt: 'x' } },
+      } as ProjectMapping,
+    },
+  })
+
+  assert.equal(migrated.projectMapping?.['1']?.storiesByEpic?.['VBAA-639']?.infra?.key, 'VBAA-680')
+  assert.equal(migrated.projectMapping?.['2']?.storiesByEpic?.['']?.soporte?.key, 'VBGLOBAL-9')
+  assert.equal('stories' in (migrated.projectMapping?.['1'] ?? {}), false)
+})
+
+test('changing the epic keeps the cached stories and the done transition', async () => {
+  const configPath = await tempConfigPath()
+
+  await setProjectMapping(
+    1,
+    {
+      projectName: 'Apartados',
+      jiraProjectKey: 'VBAA',
+      parentKey: 'VBAA-639',
+      doneTransition: { id: '41', name: 'Listo' },
+      issueTypeName: 'Subtarea',
+    },
+    configPath,
+  )
+  await setStory(1, 'infra', { key: 'VBAA-680', summary: 'infra', verifiedAt: 'x' }, 'VBAA-639', configPath)
+  await setProjectMapping(1, { projectName: 'Apartados', jiraProjectKey: 'VBAA', parentKey: 'VBAA-685' }, configPath)
+
+  const mapping = (await readConfig(configPath)).projectMapping['1']
+
+  assert.equal(mapping?.parentKey, 'VBAA-685')
+  assert.equal(mapping?.doneTransition?.id, '41')
+  assert.equal(mapping?.issueTypeName, 'Subtarea')
+  assert.equal(mapping?.storiesByEpic?.['VBAA-639']?.infra?.key, 'VBAA-680')
+})
+
+test('pointing at the board drops the epic and keeps every cached story', async () => {
+  const configPath = await tempConfigPath()
+
+  await setProjectMapping(1, { projectName: 'Apartados', jiraProjectKey: 'VBAA', parentKey: 'VBAA-639' }, configPath)
+  await setStory(1, 'infra', { key: 'VBAA-680', summary: 'infra', verifiedAt: 'x' }, 'VBAA-639', configPath)
+  await setProjectMapping(
+    1,
+    { projectName: 'Apartados', jiraProjectKey: 'VBAA', parentKey: null, hierarchy: 'story-subtask', epicResolved: true },
+    configPath,
+  )
+
+  const mapping = (await readConfig(configPath)).projectMapping['1']
+
+  assert.equal(mapping?.parentKey, undefined)
+  assert.equal(mapping && epicMode(mapping), 'per-run')
+  assert.equal(mapping?.storiesByEpic?.['VBAA-639']?.infra?.key, 'VBAA-680')
+})
+
+test('moving to another board forgets what belonged to the old one', () => {
+  const merged = mergeProjectMapping(
+    {
+      projectName: 'X',
+      jiraProjectKey: 'INN',
+      parentKey: 'INN-1',
+      doneTransition: { id: '31', name: 'Done' },
+      issueTypeId: '10012',
+      storiesByEpic: { 'INN-1': { infra: { key: 'INN-2', summary: 'infra', verifiedAt: 'x' } } },
+      issueTypeName: 'Tarea',
+    },
+    { projectName: 'X', jiraProjectKey: 'VBAA' },
+  )
+
+  assert.equal(merged.jiraProjectKey, 'VBAA')
+  assert.equal(merged.parentKey, undefined)
+  assert.equal(merged.doneTransition, undefined)
+  assert.equal(merged.issueTypeId, undefined)
+  assert.equal(merged.storiesByEpic, undefined)
+  assert.equal(merged.issueTypeName, 'Tarea')
+})
+
+test('stories cached under different epics do not overwrite each other', async () => {
+  const configPath = await tempConfigPath()
+
+  await setProjectMapping(1, { projectName: 'Apartados', jiraProjectKey: 'VBAA' }, configPath)
+  await setStory(1, 'seguridad', { key: 'VBAA-686', summary: 'Seguridad', verifiedAt: 'x' }, 'VBAA-685', configPath)
+  await setStory(1, 'seguridad', { key: 'VBAA-700', summary: 'Seguridad', verifiedAt: 'x' }, 'VBAA-5', configPath)
+  await setStory(1, 'soporte', { key: 'VBAA-701', summary: 'Soporte', verifiedAt: 'x' }, NO_EPIC, configPath)
+
+  const stories = (await readConfig(configPath)).projectMapping['1']?.storiesByEpic
+
+  assert.equal(stories?.['VBAA-685']?.seguridad?.key, 'VBAA-686')
+  assert.equal(stories?.['VBAA-5']?.seguridad?.key, 'VBAA-700')
+  assert.equal(stories?.['']?.soporte?.key, 'VBAA-701')
+})
+
+test('the epic mode follows from what the mapping points at', () => {
+  assert.equal(epicMode({ projectName: 'A', jiraProjectKey: 'GCCAPP', parentKey: 'GCCAPP-2207' }), 'fixed')
+  assert.equal(epicMode({ projectName: 'B', jiraProjectKey: 'VBAA' }), 'per-run')
+  assert.equal(epicMode({ projectName: 'C', jiraProjectKey: 'VBAA', hierarchy: 'story-subtask' }), 'per-run')
+  assert.equal(epicMode({ projectName: 'D', jiraProjectKey: 'DD', hierarchy: 'flat-task' }), 'flat')
+})
+
+test('a fixed epic reports the same target as before', () => {
+  const target = jiraTarget({
+    projectName: 'GCC',
+    jiraProjectKey: 'GCCAPP',
+    parentKey: 'GCCAPP-2207',
+    hierarchy: 'epic-story-subtask',
+    epicResolved: true,
+    storiesByEpic: { 'GCCAPP-2207': { infra: { key: 'GCCAPP-2208', summary: 'infra', verifiedAt: 'x' } } },
+  })
+
+  assert.equal(target.epicMode, 'fixed')
+  assert.equal(target.jiraEpicKey, 'GCCAPP-2207')
+  assert.equal(target.jiraParentKey, 'GCCAPP-2207')
+  assert.equal(target.hierarchy, 'epic-story-subtask')
+  assert.equal(target.jiraStories.infra?.key, 'GCCAPP-2208')
+})
+
+test('a board target leaves the epic open and hands over every cached story', () => {
+  const target = jiraTarget({
+    projectName: 'Apartados',
+    jiraProjectKey: 'VBAA',
+    hierarchy: 'story-subtask',
+    epicResolved: true,
+    storiesByEpic: {
+      'VBAA-639': { infra: { key: 'VBAA-680', summary: 'infra', verifiedAt: 'x' } },
+      '': { soporte: { key: 'VBAA-701', summary: 'soporte', verifiedAt: 'x' } },
+    },
+  })
+
+  assert.equal(target.epicMode, 'per-run')
+  assert.equal(target.jiraEpicKey, null)
+  assert.equal(target.jiraParentKey, null)
+  assert.deepEqual(Object.keys(target.jiraStories), ['soporte'])
+  assert.equal(target.jiraStoriesByEpic['VBAA-639']?.infra?.key, 'VBAA-680')
+})
+
+test('an unmapped project has no target', () => {
+  const target = jiraTarget(undefined)
+
+  assert.equal(target.jiraProjectKey, null)
+  assert.equal(target.epicMode, null)
+  assert.equal(target.hierarchy, 'story-subtask')
 })
