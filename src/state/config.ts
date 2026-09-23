@@ -4,9 +4,14 @@ import os from 'node:os'
 import path from 'node:path'
 
 export const CONFIG_DIR = path.join(os.homedir(), '.config', 'bita')
-export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.json')
+export const CONFIG_PATH_ENV_VAR = 'BITA_CONFIG_PATH'
+export const CONFIG_PATH = process.env[CONFIG_PATH_ENV_VAR] ?? path.join(CONFIG_DIR, 'config.json')
 
 export type HierarchyStrategy = 'epic-story-subtask' | 'story-subtask' | 'flat-task'
+
+export type EpicMode = 'fixed' | 'per-run' | 'flat'
+
+export const NO_EPIC = ''
 
 export interface StoryRef {
   key: string
@@ -19,7 +24,7 @@ export interface ProjectMapping {
   jiraProjectKey: string
   hierarchy?: HierarchyStrategy
   epicResolved?: boolean
-  stories?: Record<string, StoryRef>
+  storiesByEpic?: Record<string, Record<string, StoryRef>>
   storyIssueTypeName?: string
   workIssueTypeName?: string
   parentKey?: string
@@ -69,6 +74,7 @@ export const LEGACY_CONFIG_PATH = path.join(
 
 interface LegacyProjectMapping extends ProjectMapping {
   togglProjectName?: string
+  stories?: Record<string, StoryRef>
 }
 
 interface LegacyScopeMapping extends ScopeMapping {
@@ -81,8 +87,16 @@ export function migrateLegacyKeys(parsed: Partial<AppConfig>): Partial<AppConfig
   const projectMapping: Record<string, ProjectMapping> = {}
   for (const [key, value] of Object.entries(parsed.projectMapping ?? {})) {
     const legacy = value as LegacyProjectMapping
-    const { togglProjectName, ...rest } = legacy
-    projectMapping[key] = { ...rest, projectName: rest.projectName ?? togglProjectName ?? '' }
+    const { togglProjectName, stories, ...rest } = legacy
+    const migrated: ProjectMapping = { ...rest, projectName: rest.projectName ?? togglProjectName ?? '' }
+    if (stories && Object.keys(stories).length > 0) {
+      const epicKey = rest.parentKey ?? NO_EPIC
+      migrated.storiesByEpic = {
+        ...rest.storiesByEpic,
+        [epicKey]: { ...stories, ...rest.storiesByEpic?.[epicKey] },
+      }
+    }
+    projectMapping[key] = migrated
   }
 
   const legacyScopes = (parsed as { repoMapping?: Record<string, unknown> }).repoMapping
@@ -131,15 +145,82 @@ export async function writeConfig(config: AppConfig, configPath = CONFIG_PATH): 
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
 }
 
+export type ProjectMappingUpdate = Omit<ProjectMapping, 'parentKey'> & { parentKey?: string | null }
+
+const BOARD_SCOPED_FIELDS = [
+  'storiesByEpic',
+  'doneTransition',
+  'issueTypeId',
+  'timetrackingAvailable',
+] as const satisfies readonly (keyof ProjectMapping)[]
+
+export function mergeProjectMapping(
+  existing: ProjectMapping | undefined,
+  update: ProjectMappingUpdate,
+): ProjectMapping {
+  const { parentKey, ...fields } = update
+  const merged: ProjectMapping = { ...existing, ...fields }
+
+  if (parentKey === null) delete merged.parentKey
+  else if (parentKey !== undefined) merged.parentKey = parentKey
+
+  if (existing && existing.jiraProjectKey !== update.jiraProjectKey) {
+    for (const field of BOARD_SCOPED_FIELDS) {
+      if (!(field in fields)) delete merged[field]
+    }
+    if (parentKey === undefined) delete merged.parentKey
+  }
+
+  return merged
+}
+
 export async function setProjectMapping(
   projectId: number,
-  mapping: ProjectMapping,
+  update: ProjectMappingUpdate,
   configPath = CONFIG_PATH,
 ): Promise<AppConfig> {
   const config = await readConfig(configPath)
-  config.projectMapping[String(projectId)] = mapping
+  const key = String(projectId)
+  config.projectMapping[key] = mergeProjectMapping(config.projectMapping[key], update)
   await writeConfig(config, configPath)
   return config
+}
+
+export function epicMode(mapping: ProjectMapping): EpicMode {
+  if (mapping.parentKey) return 'fixed'
+  if (mapping.hierarchy === 'flat-task') return 'flat'
+  return 'per-run'
+}
+
+export function storiesForEpic(mapping: ProjectMapping, epicKey: string): Record<string, StoryRef> {
+  return mapping.storiesByEpic?.[epicKey] ?? {}
+}
+
+export function jiraTarget(mapping: ProjectMapping | undefined) {
+  if (!mapping) {
+    return {
+      jiraProjectKey: null,
+      epicMode: null,
+      hierarchy: 'story-subtask' as HierarchyStrategy,
+      jiraEpicKey: null,
+      jiraParentKey: null,
+      epicResolved: false,
+      jiraStories: {},
+      jiraStoriesByEpic: {},
+    }
+  }
+
+  const parentKey = mapping.parentKey ?? null
+  return {
+    jiraProjectKey: mapping.jiraProjectKey,
+    epicMode: epicMode(mapping),
+    hierarchy: mapping.hierarchy ?? (parentKey ? 'epic-story-subtask' : 'story-subtask'),
+    jiraEpicKey: parentKey,
+    jiraParentKey: parentKey,
+    epicResolved: mapping.epicResolved ?? false,
+    jiraStories: storiesForEpic(mapping, parentKey ?? NO_EPIC),
+    jiraStoriesByEpic: mapping.storiesByEpic ?? {},
+  }
 }
 
 export async function unsetProjectMapping(
@@ -182,13 +263,17 @@ export async function setStory(
   projectId: number,
   themeId: string,
   story: StoryRef,
+  epicKey: string,
   configPath = CONFIG_PATH,
 ): Promise<AppConfig> {
   const config = await readConfig(configPath)
   const key = String(projectId)
   const mapping = config.projectMapping[key]
   if (!mapping) throw new Error(`Toggl project ${projectId} is not mapped to a Jira project.`)
-  mapping.stories = { ...mapping.stories, [themeId]: story }
+  mapping.storiesByEpic = {
+    ...mapping.storiesByEpic,
+    [epicKey]: { ...mapping.storiesByEpic?.[epicKey], [themeId]: story },
+  }
   await writeConfig(config, configPath)
   return config
 }

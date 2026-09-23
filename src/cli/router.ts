@@ -124,6 +124,13 @@ Amend options:
   --project ID|NAME          Set the project
   --note-md FILE             Seed a section of the document from a markdown file
 
+Map options:
+  --parent KEY-123           With "map set", send every task under this epic
+  --no-epic                  With "map set", point at the board and pick the epic on every run
+  --issue-type NAME          With "map set", the issue type of the work
+  --epic KEY-123             With "map story", the epic the story sits under
+  --no-epic                  With "map story", a story without an epic
+
 Link options:
   --issue KEY                The Jira issue the entries were written to
   --ids A,B,C                Entry ids, as an alternative to positionals

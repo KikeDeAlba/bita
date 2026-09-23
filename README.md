@@ -129,6 +129,7 @@ bita projects
 
 La base se crea sola en `~/.local/share/bita/bita.db` al primer uso. `BITA_DB_PATH`
 la mueve a otro sitio, que es también la forma de probar cosas sin tocar la real.
+`BITA_CONFIG_PATH` hace lo mismo con la configuración (`~/.config/bita/config.json`).
 
 ### 4. Dar de alta un repositorio
 
@@ -169,9 +170,15 @@ Jira no se toca desde el CLI: lo escribe Claude por el conector de Atlassian. Lo
 primera vez:
 
 ```sh
-bita map set <projectId> <JIRAKEY> --parent <JIRAKEY-123>
+bita map set <projectId> <JIRAKEY> --parent <JIRAKEY-123>   # siempre a esa épica
+bita map set <projectId> <JIRAKEY> --no-epic                # al tablero: la épica se elige en cada corrida
 bita map list
 ```
+
+Un proyecto apunta a una épica cuando todo su trabajo cae siempre en la misma, o
+al tablero cuando se reparte entre varias. Cambiar de uno a otro conserva el
+resto del mapeo: la transición de cierre, los tipos y las Historias ya creadas,
+que se guardan por épica.
 
 ## Uso
 
